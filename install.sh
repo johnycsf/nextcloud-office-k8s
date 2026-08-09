@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Nextcloud on a k3s cluster with Longhorn storage.
+# Install Nextcloud + Collabora Online (LibreOffice) on a k3s cluster with Longhorn.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,20 +33,31 @@ EOF
   exit 1
 fi
 
-echo "Applying Nextcloud manifests..."
+echo "Applying Nextcloud + Collabora manifests..."
 kubectl apply -f "${ROOT}/deploy.yaml"
 
 echo "Waiting for Nextcloud to become ready (first start can take a few minutes)..."
 kubectl -n nextcloud rollout status deployment/nextcloud --timeout=300s
 
+echo "Waiting for Collabora (LibreOffice Online) to become ready..."
+kubectl -n nextcloud rollout status deployment/collabora --timeout=300s
+
+cat <<'EOF'
+
+Pods are up.
+
+Next steps:
+  1. Open Nextcloud, accept the self-signed certificate warning, create your admin account
+  2. This script will finish Office (LibreOffice/Collabora) setup automatically
+
+EOF
+
+# Resolve addresses for a clearer message before configure-office waits on the wizard
+NC_IP="$(kubectl -n nextcloud get svc nextcloud -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+if [[ -z "${NC_IP}" ]]; then
+  NC_IP="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+fi
+echo "Nextcloud URL hint: https://${NC_IP}/"
 echo
-echo "Nextcloud is installed."
-echo "Get the service address with:"
-echo "  kubectl -n nextcloud get svc nextcloud"
-echo
-echo "Open https://<EXTERNAL-IP>/ in your browser."
-echo "Accept the self-signed certificate warning, then create your admin account."
-echo
-echo "If Nextcloud complains about an untrusted domain, add your IP/hostname"
-echo "under Settings → Administration → Overview, or edit config.php as described"
-echo "in the README."
+
+"${ROOT}/configure-office.sh"

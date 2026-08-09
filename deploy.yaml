@@ -1,5 +1,9 @@
-# Nextcloud on k3s — single-file deploy for a homelab
-# Docs: https://docs.linuxserver.io/images/docker-nextcloud/
+# Nextcloud + Collabora Online (LibreOffice) on k3s
+# Nextcloud image docs: https://docs.linuxserver.io/images/docker-nextcloud/
+# Office integration:   https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html
+#
+# The LinuxServer Nextcloud image cannot run the built-in Collabora/CODE app.
+# A separate collabora/code Deployment is required for Word/Excel/PPT editing.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -102,3 +106,86 @@ spec:
     - name: https
       port: 443
       targetPort: https
+---
+# Collabora Online Development Edition (CODE) — LibreOffice in the browser
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: collabora
+  namespace: nextcloud
+  labels:
+    app: collabora
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: collabora
+  template:
+    metadata:
+      labels:
+        app: collabora
+    spec:
+      containers:
+        - name: collabora
+          image: collabora/code:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            # install.sh / configure-office.sh overwrite these with your real URLs
+            - name: aliasgroup1
+              value: "https://CHANGE_ME:443"
+            - name: domain
+              value: "CHANGE_ME"
+            - name: dictionaries
+              value: "en_US"
+            - name: extra_params
+              # Homelab-friendly: Collabora serves HTTP; allow WOPI to self-signed Nextcloud
+              value: >-
+                --o:ssl.enable=false
+                --o:ssl.termination=false
+                --o:welcome.enable=false
+                --o:net.frame_ancestors=*
+                --o:storage.wopi.ssl_verification=false
+            - name: username
+              value: "admin"
+            - name: password
+              value: "changeme"
+          ports:
+            - name: coolwsd
+              containerPort: 9980
+          securityContext:
+            capabilities:
+              add:
+                - MKNOD
+                - SYS_CHROOT
+                - FOWNER
+                - CHOWN
+          readinessProbe:
+            httpGet:
+              path: /hosting/discovery
+              port: coolwsd
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: collabora
+  namespace: nextcloud
+spec:
+  type: LoadBalancer
+  selector:
+    app: collabora
+  ports:
+    - name: coolwsd
+      port: 9980
+      targetPort: coolwsd
