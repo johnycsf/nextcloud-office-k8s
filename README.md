@@ -139,3 +139,7 @@ Deletes PVCs and your Nextcloud data.
 - Keep **one replica** of Nextcloud (SQLite) and one of Collabora.
 - This homelab layout serves Collabora over **HTTP :9980** and Nextcloud over **HTTPS :443** with a self-signed cert so it works without a reverse proxy. For internet exposure, put **both** behind Caddy/Traefik/nginx with real certificates and re-run `configure-office.sh` with your DNS names.
 - Official Nextcloud guides prefer a dedicated hostname for Collabora (e.g. `office.example.com`); the IP + LoadBalancer approach here is intentionally simpler for first-time homelab use.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
