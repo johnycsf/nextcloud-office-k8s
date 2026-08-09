@@ -8,7 +8,7 @@ The [LinuxServer Nextcloud image](https://docs.linuxserver.io/images/docker-next
 
 This repo fixes that the way Nextcloud documents recommend: run a **separate** `collabora/code` server and connect it with the **Nextcloud Office** (`richdocuments`) app.
 
-See:
+References:
 
 - [Nextcloud Office Docker example](https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html)
 - [richdocuments install notes](https://github.com/nextcloud/richdocuments/blob/main/docs/install.md)
@@ -20,14 +20,22 @@ See:
 | Nextcloud | `lscr.io/linuxserver/nextcloud:latest` | `443` | Files + UI |
 | Collabora CODE | `collabora/code:latest` | `9980` | LibreOffice editing in the browser |
 
-Storage uses **Longhorn** PVCs (`/config` + `/data`). SQLite is fine for a typical home lab.
+### Reliability details (the parts that usually break)
+
+| Problem | What this repo does |
+|---------|---------------------|
+| Built-in Office app is broken on LinuxServer | Disables `richdocumentscode*`; uses external Collabora |
+| Nextcloud cannot reach Collabora via LAN IP (hairpin NAT) | `wopi_url` uses in-cluster DNS; `public_wopi_url` uses the LoadBalancer for browsers |
+| Collabora cannot reach Nextcloud via LAN IP | `hostAliases` maps your Nextcloud host/IP to the Service ClusterIP |
+| Self-signed Nextcloud cert | `disable_certificate_verification` + Collabora `ssl.ssl_verification=false` |
+| Slow Collabora first start | `startupProbe` with a long failure window + 3Gi memory limit |
 
 ## What you need
 
 1. A working **k3s** cluster (`kubectl` talks to it)
 2. **Longhorn** storage (or change `storageClassName` in `deploy.yaml`)
-3. About **2–3 GiB RAM free** for Collabora in addition to Nextcloud
-4. A browser that can reach **both** the Nextcloud and Collabora LoadBalancer IPs/ports
+3. About **3 GiB RAM free** for Collabora in addition to Nextcloud
+4. A browser that can reach **both** Nextcloud `:443` and Collabora `:9980`
 
 ## One-time: install Longhorn
 
@@ -45,30 +53,31 @@ kubectl -n longhorn-system get pod
 ```bash
 git clone https://github.com/johnycsf/nextcloud-k3s.git
 cd nextcloud-k3s
-chmod +x install.sh configure-office.sh
+chmod +x install.sh configure-office.sh verify-office.sh
 ./install.sh
 ```
 
 What the script does:
 
 1. Applies `deploy.yaml` (Nextcloud + Collabora)
-2. Waits for both Deployments
-3. Asks you (by waiting) to open Nextcloud and **create the admin account**
-4. Runs `configure-office.sh` to:
-   - allow your Nextcloud host in Collabora (`aliasgroup1` / `domain`)
-   - install/enable `richdocuments`
-   - set `wopi_url` to Collabora
-   - disable the broken built-in CODE apps if present
-   - allow local/LAN WOPI callbacks (homelab-friendly)
+2. Waits for both Deployments (Collabora image is large — be patient)
+3. Waits for you to open Nextcloud and **create the admin account**
+4. Runs `configure-office.sh` (URLs, apps, hostAliases)
+5. Runs `verify-office.sh` (connectivity + config smoke tests)
 
 Then try: **+ New → Document / Spreadsheet / Presentation**.
 
-### Re-run Office wiring later
+### Verify anytime
 
-If your IP/DNS changes, or Office stopped working:
+```bash
+./verify-office.sh
+```
+
+All checks should print `PASS`. If something fails:
 
 ```bash
 NEXTCLOUD_HOST=192.168.1.50 COLLABORA_HOST=192.168.1.50 ./configure-office.sh
+./verify-office.sh
 ```
 
 ## Open the apps
@@ -78,7 +87,8 @@ kubectl -n nextcloud get svc
 ```
 
 - Nextcloud: `https://EXTERNAL-IP/` (self-signed cert — accept the warning)
-- Collabora discovery (for debugging): `http://EXTERNAL-IP:9980/hosting/discovery`
+- Collabora discovery: `http://EXTERNAL-IP:9980/hosting/discovery`  
+  (your browser should show XML containing `urlsrc=`)
 
 ## Customize
 
@@ -100,6 +110,7 @@ kubectl -n nextcloud set image deployment/collabora \
 kubectl -n nextcloud rollout status deployment/nextcloud
 kubectl -n nextcloud rollout status deployment/collabora
 ./configure-office.sh
+./verify-office.sh
 ```
 
 Nextcloud major upgrades must happen **one version at a time** (LinuxServer pulls the new image and upgrades on start). Prefer the `previous` tag for careful upgrades — see [LinuxServer docs](https://docs.linuxserver.io/images/docker-nextcloud/).
@@ -112,9 +123,19 @@ kubectl delete -f deploy.yaml
 
 Deletes PVCs and your Nextcloud data.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|----------------|-----|
+| New → Document spins / blank | Browser cannot reach `:9980` | Open `http://IP:9980/hosting/discovery` from your PC |
+| “Unauthorized WOPI host” | Callback allow list / URL mismatch | Re-run `./configure-office.sh` |
+| Collabora pod `OOMKilled` | Not enough RAM | Free memory or raise the limit in `deploy.yaml` |
+| Collabora stuck not Ready | First pull/start still running | `kubectl -n nextcloud logs deploy/collabora -f` |
+| Works on LAN IP only after reconfigure | IP/DNS changed | Set `NEXTCLOUD_HOST` / `COLLABORA_HOST` and re-run configure |
+| Built-in Office still enabled | Old app left on | `./configure-office.sh` disables `richdocumentscode*` |
+
 ## Notes for beginners
 
 - Keep **one replica** of Nextcloud (SQLite) and one of Collabora.
-- Collabora needs more RAM than Nextcloud; if the Collabora pod is `OOMKilled`, lower other workloads or raise the memory limit in `deploy.yaml`.
 - This homelab layout serves Collabora over **HTTP :9980** and Nextcloud over **HTTPS :443** with a self-signed cert so it works without a reverse proxy. For internet exposure, put **both** behind Caddy/Traefik/nginx with real certificates and re-run `configure-office.sh` with your DNS names.
 - Official Nextcloud guides prefer a dedicated hostname for Collabora (e.g. `office.example.com`); the IP + LoadBalancer approach here is intentionally simpler for first-time homelab use.

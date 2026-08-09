@@ -5,59 +5,11 @@
 #   https://github.com/nextcloud/richdocuments/blob/main/docs/install.md
 set -euo pipefail
 
-NS=nextcloud
-
-need() {
-  command -v "$1" >/dev/null 2>&1 || {
-    echo "Missing required command: $1" >&2
-    exit 1
-  }
-}
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "${ROOT}/lib.sh"
 
 need kubectl
-
-escape_regex_dots() {
-  # Collabora's domain= value is a regex; dots must be escaped.
-  # shellcheck disable=SC2001
-  printf '%s' "$1" | sed 's/\./\\\\./g'
-}
-
-svc_address() {
-  local name="$1"
-  local ip host
-  ip="$(kubectl -n "$NS" get svc "$name" -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
-  if [[ -n "${ip}" ]]; then
-    printf '%s' "${ip}"
-    return 0
-  fi
-  host="$(kubectl -n "$NS" get svc "$name" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)"
-  if [[ -n "${host}" ]]; then
-    printf '%s' "${host}"
-    return 0
-  fi
-  return 1
-}
-
-wait_svc_address() {
-  local name="$1"
-  local tries="${2:-60}"
-  local addr=""
-  for _ in $(seq 1 "${tries}"); do
-    if addr="$(svc_address "${name}")"; then
-      printf '%s' "${addr}"
-      return 0
-    fi
-    sleep 2
-  done
-  # k3s ServiceLB fallback: first node InternalIP
-  kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}'
-}
-
-occ() {
-  local pod
-  pod="$(kubectl -n "$NS" get pod -l app=nextcloud -o jsonpath='{.items[0].metadata.name}')"
-  kubectl -n "$NS" exec "$pod" -- occ "$@"
-}
 
 echo "Waiting for Nextcloud and Collabora pods..."
 kubectl -n "$NS" rollout status deployment/nextcloud --timeout=300s
@@ -73,17 +25,41 @@ if [[ -z "${NC_HOST}" || -z "${COLLABORA_HOST}" ]]; then
 fi
 
 NC_URL="https://${NC_HOST}"
-# Collabora is exposed over HTTP on 9980 in this homelab layout (ssl.enable=false)
-COLLABORA_URL="http://${COLLABORA_HOST}:9980"
+# Browser-facing Collabora URL (must be reachable from your PC)
+COLLABORA_PUBLIC_URL="http://${COLLABORA_HOST}:9980"
+# In-cluster Collabora URL (avoids hairpin NAT when Nextcloud talks to Collabora)
+COLLABORA_INTERNAL_URL="http://collabora.${NS}.svc.cluster.local:9980"
 DOMAIN_REGEX="$(escape_regex_dots "${NC_HOST}")"
+NC_CLUSTER_IP="$(kubectl -n "$NS" get svc nextcloud -o jsonpath='{.spec.clusterIP}')"
 
-echo "Nextcloud URL : ${NC_URL}"
-echo "Collabora URL: ${COLLABORA_URL}"
+echo "Nextcloud URL           : ${NC_URL}"
+echo "Collabora (browser)    : ${COLLABORA_PUBLIC_URL}"
+echo "Collabora (in-cluster) : ${COLLABORA_INTERNAL_URL}"
+echo "Nextcloud ClusterIP     : ${NC_CLUSTER_IP}"
 
-echo "Updating Collabora allow-list for this Nextcloud host..."
+echo "Updating Collabora for this Nextcloud host..."
+# hostAliases: Collabora must reach the *public* Nextcloud host/IP. On many home
+# routers, pod → LAN-IP hairpin NAT fails; map the public host to ClusterIP instead.
+kubectl -n "$NS" patch deployment collabora --type=strategic -p "{
+  \"spec\": {
+    \"template\": {
+      \"spec\": {
+        \"hostAliases\": [
+          {
+            \"ip\": \"${NC_CLUSTER_IP}\",
+            \"hostnames\": [\"${NC_HOST}\"]
+          }
+        ]
+      }
+    }
+  }
+}"
+
 kubectl -n "$NS" set env deployment/collabora \
   "aliasgroup1=${NC_URL}:443" \
-  "domain=${DOMAIN_REGEX}"
+  "domain=${DOMAIN_REGEX}" \
+  "server_name=${COLLABORA_HOST}:9980"
+
 kubectl -n "$NS" rollout status deployment/collabora --timeout=300s
 
 echo "Waiting until Nextcloud setup wizard is finished (create your admin user in the browser)..."
@@ -112,13 +88,13 @@ echo "Installing Nextcloud Office (richdocuments) and pointing it at Collabora..
 occ app:disable richdocumentscode 2>/dev/null || true
 occ app:disable richdocumentscode_arm64 2>/dev/null || true
 
-if ! occ app:list 2>/dev/null | grep -q 'richdocuments'; then
-  occ app:install richdocuments
-fi
+# Install is idempotent enough for homelab use; ignore "already installed".
+occ app:install richdocuments 2>/dev/null || true
 occ app:enable richdocuments
 
-occ config:app:set richdocuments wopi_url --value="${COLLABORA_URL}"
-occ config:app:set richdocuments public_wopi_url --value="${COLLABORA_URL}"
+# Split URLs: Nextcloud server uses in-cluster DNS; browsers use the LoadBalancer.
+occ config:app:set richdocuments wopi_url --value="${COLLABORA_INTERNAL_URL}"
+occ config:app:set richdocuments public_wopi_url --value="${COLLABORA_PUBLIC_URL}"
 occ config:app:set richdocuments disable_certificate_verification --type=string --value="yes"
 # Homelab: allow WOPI callbacks from cluster / LAN ranges
 occ config:app:set richdocuments wopi_allowlist --value="0.0.0.0/0,::/0"
@@ -129,19 +105,22 @@ else
   echo "Note: richdocuments:activate-config returned non-zero (often still OK on first run)."
 fi
 
+echo
+echo "Running connectivity checks..."
+"${ROOT}/verify-office.sh" || {
+  echo
+  echo "configure-office.sh finished, but verify-office.sh reported problems." >&2
+  echo "See the messages above before testing in the browser." >&2
+  exit 1
+}
+
 cat <<EOF
 
 Office editing is configured (Collabora / LibreOffice Online).
 
 Nextcloud:  ${NC_URL}
-Collabora:  ${COLLABORA_URL}/hosting/discovery
+Collabora:  ${COLLABORA_PUBLIC_URL}/hosting/discovery
 
 In Nextcloud, try:  + New → Document / Spreadsheet / Presentation
-
-If a document still fails to open:
-  1. Confirm both URLs are reachable from your browser (not only from the cluster)
-  2. Re-run this script after changing IPs/DNS:
-       NEXTCLOUD_HOST=... COLLABORA_HOST=... ./configure-office.sh
-  3. For a proper domain + HTTPS reverse proxy later, set those hosts to your DNS names
 
 EOF

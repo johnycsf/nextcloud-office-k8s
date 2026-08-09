@@ -127,30 +127,32 @@ spec:
       labels:
         app: collabora
     spec:
+      # CODE's docker entrypoint expects a TTY
       containers:
         - name: collabora
           image: collabora/code:latest
           imagePullPolicy: IfNotPresent
+          stdin: true
+          tty: true
           env:
-            # install.sh / configure-office.sh overwrite these with your real URLs
+            # configure-office.sh overwrites these with your real Nextcloud / Collabora URLs
             - name: aliasgroup1
-              value: "https://CHANGE_ME:443"
+              value: "https://127.0.0.1:443"
+            # Temporary allow-all until configure-office.sh sets your real host regex
             - name: domain
-              value: "CHANGE_ME"
+              value: ".*"
+            - name: server_name
+              value: "127.0.0.1:9980"
             - name: dictionaries
               value: "en_US"
-            - name: extra_params
-              # Homelab-friendly: Collabora serves HTTP; allow WOPI to self-signed Nextcloud
-              value: >-
-                --o:ssl.enable=false
-                --o:ssl.termination=false
-                --o:welcome.enable=false
-                --o:net.frame_ancestors=*
-                --o:storage.wopi.ssl_verification=false
             - name: username
               value: "admin"
             - name: password
               value: "changeme"
+            - name: extra_params
+              # Plain HTTP Collabora for homelab LoadBalancer access (no reverse proxy required).
+              # ssl.ssl_verification=false lets Collabora fetch WOPI from self-signed Nextcloud.
+              value: "--o:ssl.enable=false --o:ssl.termination=false --o:ssl.ssl_verification=false --o:welcome.enable=false --o:net.frame_ancestors=*"
           ports:
             - name: coolwsd
               containerPort: 9980
@@ -161,20 +163,36 @@ spec:
                 - SYS_CHROOT
                 - FOWNER
                 - CHOWN
+          # First start (image pull + coolwsd init) is slow
+          startupProbe:
+            httpGet:
+              path: /
+              port: coolwsd
+              scheme: HTTP
+            failureThreshold: 60
+            periodSeconds: 5
           readinessProbe:
             httpGet:
               path: /hosting/discovery
               port: coolwsd
               scheme: HTTP
-            initialDelaySeconds: 30
-            periodSeconds: 15
-            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /
+              port: coolwsd
+              scheme: HTTP
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
           resources:
             requests:
-              cpu: 200m
-              memory: 512Mi
+              cpu: 250m
+              memory: 1Gi
             limits:
-              memory: 2Gi
+              memory: 3Gi
 ---
 apiVersion: v1
 kind: Service
