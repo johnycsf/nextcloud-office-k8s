@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Nextcloud + Collabora Online (LibreOffice) on a k3s cluster with Longhorn.
+# Install Nextcloud + Collabora Online (LibreOffice) on a Kubernetes cluster with Longhorn.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

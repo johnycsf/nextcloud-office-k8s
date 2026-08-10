@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for nextcloud-office-k3s scripts.
+# Shared helpers for nextcloud-office-k8s scripts.
 # shellcheck shell=bash
 
 NS="${NS:-nextcloud}"
@@ -44,7 +44,7 @@ wait_svc_address() {
     fi
     sleep 2
   done
-  # k3s ServiceLB / Klipper often leaves EXTERNAL-IP empty briefly; node IP still works.
+  # a LoadBalancer implementation (e.g. k3s ServiceLB, MetalLB) often leaves EXTERNAL-IP empty briefly; node IP still works.
   kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}'
 }
 

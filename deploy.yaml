@@ -1,4 +1,4 @@
-# Nextcloud + Collabora Online (LibreOffice) on k3s
+# Nextcloud + Collabora Online (LibreOffice) on Kubernetes
 # Nextcloud image docs: https://docs.linuxserver.io/images/docker-nextcloud/
 # Office integration:   https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html
 #

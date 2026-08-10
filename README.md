@@ -1,6 +1,6 @@
-# nextcloud-office-k3s
+# nextcloud-office-k8s
 
-Deploy [Nextcloud](https://nextcloud.com/) on a [k3s](https://k3s.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/).
+Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/).
 
 ## Why “New → Document” used to do nothing
 
@@ -32,7 +32,7 @@ References:
 
 ## What you need
 
-1. A working **k3s** cluster (`kubectl` talks to it)
+1. A working **Kubernetes** cluster (`kubectl` talks to it)
 2. **Longhorn** storage (or change `storageClassName` in `deploy.yaml`)
 3. About **3 GiB RAM free** for Collabora in addition to Nextcloud
 4. A browser that can reach **both** Nextcloud `:443` and Collabora `:9980`
@@ -51,8 +51,8 @@ kubectl -n longhorn-system get pod
 ## Install Nextcloud + Office
 
 ```bash
-git clone https://github.com/johnycsf/nextcloud-office-k3s.git
-cd nextcloud-office-k3s
+git clone https://github.com/johnycsf/nextcloud-office-k8s.git
+cd nextcloud-office-k8s
 chmod +x install.sh configure-office.sh verify-office.sh
 ./install.sh
 ```
