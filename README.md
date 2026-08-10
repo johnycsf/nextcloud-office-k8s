@@ -1,4 +1,4 @@
-# nextcloud-k3s
+# nextcloud-office-k3s
 
 Deploy [Nextcloud](https://nextcloud.com/) on a [k3s](https://k3s.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/).
 
@@ -51,8 +51,8 @@ kubectl -n longhorn-system get pod
 ## Install Nextcloud + Office
 
 ```bash
-git clone https://github.com/johnycsf/nextcloud-k3s.git
-cd nextcloud-k3s
+git clone https://github.com/johnycsf/nextcloud-office-k3s.git
+cd nextcloud-office-k3s
 chmod +x install.sh configure-office.sh verify-office.sh
 ./install.sh
 ```

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared helpers for nextcloud-k3s scripts.
+# Shared helpers for nextcloud-office-k3s scripts.
 # shellcheck shell=bash
 
 NS="${NS:-nextcloud}"
