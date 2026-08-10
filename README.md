@@ -2,11 +2,9 @@
 
 Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/).
 
-## Why “New → Document” used to do nothing
+## Why Office editing needs Collabora
 
-The [LinuxServer Nextcloud image](https://docs.linuxserver.io/images/docker-nextcloud/) **cannot** run Nextcloud’s built-in Collabora/OnlyOffice packages (they need glibc). Those menu entries appear, but editing never works.
-
-This repo fixes that the way Nextcloud documents recommend: run a **separate** `collabora/code` server and connect it with the **Nextcloud Office** (`richdocuments`) app.
+In many Nextcloud setups, **+ New → Document / Spreadsheet / Presentation** appears in the UI but never actually opens a working editor. This repo follows [Nextcloud’s recommended approach](https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html): run a **separate** Collabora Online server and connect it with the **Nextcloud Office** app.
 
 References:
 
@@ -15,20 +13,22 @@ References:
 
 ## What gets installed
 
-| Component | Image | Port | Role |
-|-----------|--------|------|------|
-| Nextcloud | `lscr.io/linuxserver/nextcloud:latest` | `443` | Files + UI |
-| Collabora CODE | `collabora/code:latest` | `9980` | LibreOffice editing in the browser |
+| Component | Port | Role |
+|-----------|------|------|
+| Nextcloud | `443` | Files + UI |
+| Collabora Online | `9980` | LibreOffice editing in the browser |
+
+Exact container images are defined in `deploy.yaml`.
 
 ### Reliability details (the parts that usually break)
 
 | Problem | What this repo does |
 |---------|---------------------|
-| Built-in Office app is broken on LinuxServer | Disables `richdocumentscode*`; uses external Collabora |
+| Built-in in-container Office editor does not work | Disables it; uses external Collabora instead |
 | Nextcloud cannot reach Collabora via LAN IP (hairpin NAT) | `wopi_url` uses in-cluster DNS; `public_wopi_url` uses the LoadBalancer for browsers |
 | Collabora cannot reach Nextcloud via LAN IP | `hostAliases` maps your Nextcloud host/IP to the Service ClusterIP |
-| Self-signed Nextcloud cert | `disable_certificate_verification` + Collabora `ssl.ssl_verification=false` |
-| Slow Collabora first start | `startupProbe` with a long failure window + 3Gi memory limit |
+| Self-signed Nextcloud cert | Certificate checks disabled for this homelab layout |
+| Slow Collabora first start | Longer startup probe + higher memory limit |
 
 ## What you need
 
@@ -94,26 +94,25 @@ kubectl -n nextcloud get svc
 
 | Setting | Where | Default |
 |--------|--------|---------|
-| Timezone | Nextcloud `TZ` | `America/New_York` |
-| User/group | `PUID` / `PGID` | `1000` |
+| Timezone | Nextcloud `TZ` in `deploy.yaml` | `America/New_York` |
+| User/group | `PUID` / `PGID` in `deploy.yaml` | `1000` |
 | Config disk | `nextcloud-config` PVC | `10Gi` |
 | Files disk | `nextcloud-data` PVC | `100Gi` |
 | Office dictionaries | Collabora `dictionaries` | `en_US` |
 
 ## Update
 
+Pull newer images by editing the tags in `deploy.yaml` (or re-applying after bumping them), then:
+
 ```bash
-kubectl -n nextcloud set image deployment/nextcloud \
-  nextcloud=lscr.io/linuxserver/nextcloud:latest
-kubectl -n nextcloud set image deployment/collabora \
-  collabora=collabora/code:latest
+kubectl apply -f deploy.yaml
 kubectl -n nextcloud rollout status deployment/nextcloud
 kubectl -n nextcloud rollout status deployment/collabora
 ./configure-office.sh
 ./verify-office.sh
 ```
 
-Nextcloud major upgrades must happen **one version at a time** (LinuxServer pulls the new image and upgrades on start). Prefer the `previous` tag for careful upgrades — see [LinuxServer docs](https://docs.linuxserver.io/images/docker-nextcloud/).
+Nextcloud major version upgrades should be done **one major version at a time**.
 
 ## Uninstall
 
@@ -132,7 +131,6 @@ Deletes PVCs and your Nextcloud data.
 | Collabora pod `OOMKilled` | Not enough RAM | Free memory or raise the limit in `deploy.yaml` |
 | Collabora stuck not Ready | First pull/start still running | `kubectl -n nextcloud logs deploy/collabora -f` |
 | Works on LAN IP only after reconfigure | IP/DNS changed | Set `NEXTCLOUD_HOST` / `COLLABORA_HOST` and re-run configure |
-| Built-in Office still enabled | Old app left on | `./configure-office.sh` disables `richdocumentscode*` |
 
 ## Notes for beginners
 
