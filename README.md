@@ -2,6 +2,8 @@
 
 Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/).
 
+Docker Compose version (no Kubernetes needed): [nextcloud-office-docker](https://github.com/johnycsf/nextcloud-office-docker)
+
 ## Why Office editing needs Collabora
 
 In many Nextcloud setups, **+ New → Document / Spreadsheet / Presentation** appears in the UI but never actually opens a working editor. This repo follows [Nextcloud’s recommended approach](https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html): run a **separate** Collabora Online server and connect it with the **Nextcloud Office** app.
