@@ -123,11 +123,11 @@ parse_install_args() {
   local arg
   for arg in "$@"; do
     case "${arg}" in
-      --redis) WITH_REDIS=1 ;;
+      --include-redis) WITH_REDIS=1 ;;
       -h|--help) SHOW_HELP=1 ;;
       *)
         echo "Unknown option: ${arg}" >&2
-        echo "Usage: ./install.sh [--redis]" >&2
+        echo "Usage: ./install.sh [--include-redis]" >&2
         exit 1
         ;;
     esac
@@ -136,14 +136,14 @@ parse_install_args() {
 
 print_install_help() {
   cat <<'EOF'
-Usage: ./install.sh [--redis]
+Usage: ./install.sh [--include-redis]
 
-  --redis   Also deploy official redis:alpine and set REDIS_HOST=redis on Nextcloud
+  --include-redis   Also deploy official redis:alpine and set REDIS_HOST=redis on Nextcloud
             (caching / transactional file locking). Optional; MariaDB is always used.
 
 Examples:
   ./install.sh
-  ./install.sh --redis
+  ./install.sh --include-redis
 EOF
 }
 
@@ -157,7 +157,7 @@ apply_optional_redis() {
       echo "Redis Deployment already present — leaving it enabled."
       kubectl -n "$NS" set env deployment/nextcloud REDIS_HOST=redis >/dev/null
     else
-      echo "Redis skipped (pass --redis to enable)."
+      echo "Redis skipped (pass --include-redis to enable)."
     fi
     return 0
   fi

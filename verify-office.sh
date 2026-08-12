@@ -89,7 +89,7 @@ if redis_deployed; then
     fail "Redis pod did not respond to PING"
   fi
 else
-  pass "Redis not deployed (optional; use ./install.sh --redis)"
+  pass "Redis not deployed (optional; use ./install.sh --include-redis)"
 fi
 
 WOPI_URL="$(occ config:app:get richdocuments wopi_url 2>/dev/null || true)"

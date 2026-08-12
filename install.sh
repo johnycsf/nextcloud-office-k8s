@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install Nextcloud + Collabora Online (LibreOffice) + MariaDB on Kubernetes with Longhorn.
-# Optional: ./install.sh --redis
+# Optional: ./install.sh --include-redis
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,7 +48,7 @@ if [[ -z "${NC_IP}" ]]; then
   NC_IP="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
 fi
 
-REDIS_NOTE="Redis skipped (re-run with --redis to enable)."
+REDIS_NOTE="Redis skipped (re-run with --include-redis to enable)."
 if redis_deployed; then
   REDIS_NOTE="Redis is enabled (REDIS_HOST=redis)."
 fi

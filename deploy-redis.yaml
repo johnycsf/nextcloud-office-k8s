@@ -1,5 +1,5 @@
 # Optional Redis for Nextcloud (official caching / file-locking helper).
-# Applied by: ./install.sh --redis
+# Applied by: ./install.sh --include-redis
 # https://github.com/nextcloud/docker#running-this-image-with-docker-compose
 # https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/caching_configuration.html
 apiVersion: apps/v1
