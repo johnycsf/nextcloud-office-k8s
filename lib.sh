@@ -117,3 +117,56 @@ db_pod() {
   kubectl -n "$NS" get pod -l app=db -o jsonpath='{.items[0].metadata.name}'
 }
 
+refuse_legacy_nextcloud_cluster() {
+  if [[ "${I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL:-}" == "yes" ]]; then
+    echo "Override set: I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL=yes — continuing."
+    return 0
+  fi
+  if ! kubectl -n "$NS" get deploy nextcloud >/dev/null 2>&1; then
+    return 0
+  fi
+  local img reason=""
+  img="$(kubectl -n "$NS" get deploy nextcloud -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+  if [[ "${img}" == *linuxserver* ]] || [[ "${img}" == *lscr.io* ]]; then
+    reason="Nextcloud Deployment still uses LinuxServer image (${img})"
+  fi
+  if kubectl -n "$NS" get deploy nextcloud >/dev/null 2>&1 && ! kubectl -n "$NS" get deploy db >/dev/null 2>&1; then
+    # Installed before MariaDB was added — likely SQLite
+    if occ status 2>/dev/null | grep -q 'installed: true'; then
+      local dbtype
+      dbtype="$(occ config:system:get dbtype 2>/dev/null || true)"
+      if [[ "${dbtype}" == "sqlite" || -z "${dbtype}" ]]; then
+        reason="existing Nextcloud without MariaDB Deployment (dbtype=${dbtype:-unknown})"
+      fi
+    else
+      reason="Nextcloud Deployment exists but MariaDB Deployment 'db' is missing"
+    fi
+  fi
+  if kubectl -n "$NS" get deploy db >/dev/null 2>&1; then
+    if occ status 2>/dev/null | grep -q 'installed: true'; then
+      local dbtype
+      dbtype="$(occ config:system:get dbtype 2>/dev/null || true)"
+      if [[ "${dbtype}" == "sqlite" ]]; then
+        reason="Nextcloud is installed with SQLite while MariaDB manifests are present"
+      fi
+    fi
+  fi
+  if [[ -n "${reason}" ]]; then
+    cat <<EOF >&2
+Refusing to continue: ${reason}.
+
+git pull alone is safe. Re-applying current manifests is NOT an automatic
+SQLite→MariaDB or LinuxServer→official migration.
+
+See BREAKING-CHANGES.md
+
+Options:
+  1) Leave the cluster as-is.
+  2) Backup, delete the nextcloud namespace/PVCs, install fresh.
+  3) Only if you accept a fresh install:
+       I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL=yes ./install.sh
+EOF
+    exit 1
+  fi
+}
+

@@ -10,6 +10,8 @@ need kubectl
 need openssl
 require_longhorn
 
+refuse_legacy_nextcloud_cluster
+
 echo "Ensuring namespace + MariaDB Secret exist..."
 kubectl apply -f - <<'EOF'
 apiVersion: v1

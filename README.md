@@ -4,6 +4,8 @@ Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.
 
 Uses the **official** [`nextcloud`](https://hub.docker.com/_/nextcloud) and [`mariadb:lts`](https://hub.docker.com/_/mariadb) images.
 
+> **Updating an older clone?** Pulling git is safe. Re-running `./install.sh` against SQLite or LinuxServer installs is not an in-place migration. Read [BREAKING-CHANGES.md](BREAKING-CHANGES.md).
+
 Docker Compose version (no Kubernetes needed): [nextcloud-office-docker](https://github.com/johnycsf/nextcloud-office-docker)
 
 ## Why MariaDB
@@ -126,6 +128,8 @@ kubectl -n nextcloud get svc
 
 ## Update
 
+Only for clusters already on official Nextcloud + MariaDB from this repo:
+
 ```bash
 kubectl apply -f deploy.yaml
 kubectl -n nextcloud rollout status deployment/db
@@ -136,6 +140,8 @@ kubectl -n nextcloud rollout status deployment/collabora
 ```
 
 Nextcloud major version upgrades should be done **one major version at a time**.
+
+SQLite / LinuxServer installs: see [BREAKING-CHANGES.md](BREAKING-CHANGES.md).
 
 ## Uninstall
 
