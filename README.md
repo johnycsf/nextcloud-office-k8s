@@ -19,8 +19,8 @@ References:
 
 | Component | Image | Port | Role |
 |-----------|--------|------|------|
-| Nextcloud | `nextcloud:latest` (official) | `80` | Files + UI (HTTP) |
-| Collabora Online | `collabora/code:latest` | `9980` | LibreOffice editing in the browser |
+| Nextcloud | `nextcloud:latest` (official Docker Hub) | `80` | Files + UI (HTTP) |
+| Collabora Online | `collabora/code:latest` (official Collabora CODE) | `9980` | LibreOffice editing in the browser |
 
 ### Reliability details (the parts that usually break)
 
