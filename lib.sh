@@ -44,7 +44,7 @@ wait_svc_address() {
     fi
     sleep 2
   done
-  # a LoadBalancer implementation (e.g. k3s ServiceLB, MetalLB) often leaves EXTERNAL-IP empty briefly; node IP still works.
+  # LoadBalancer implementations (k3s ServiceLB, MetalLB, etc.) may leave EXTERNAL-IP empty briefly.
   kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}'
 }
 
@@ -56,10 +56,19 @@ collabora_pod() {
   kubectl -n "$NS" get pod -l app=collabora -o jsonpath='{.items[0].metadata.name}'
 }
 
+# Official Nextcloud image: run occ as www-data via php
 occ() {
   local pod
   pod="$(nextcloud_pod)"
-  kubectl -n "$NS" exec "$pod" -- occ "$@"
+  kubectl -n "$NS" exec -u www-data "$pod" -- php occ "$@"
+}
+
+# Fetch a URL from inside the Nextcloud container (official image may lack curl)
+nc_fetch() {
+  local url="$1"
+  local pod
+  pod="$(nextcloud_pod)"
+  kubectl -n "$NS" exec "$pod" -- php -r 'echo @file_get_contents($argv[1]);' "$url"
 }
 
 require_longhorn() {

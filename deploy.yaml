@@ -1,9 +1,9 @@
 # Nextcloud + Collabora Online (LibreOffice) on Kubernetes
-# Nextcloud image docs: https://docs.linuxserver.io/images/docker-nextcloud/
-# Office integration:   https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html
+# Official Nextcloud image: https://hub.docker.com/_/nextcloud
+# Office integration:       https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html
 #
-# The LinuxServer Nextcloud image cannot run the built-in Collabora/CODE app.
-# A separate collabora/code Deployment is required for Word/Excel/PPT editing.
+# Built-in in-container Office editors are unreliable; this stack uses a separate
+# collabora/code Deployment for Word/Excel/PPT editing.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -12,20 +12,7 @@ metadata:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: nextcloud-config
-  namespace: nextcloud
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: longhorn
-  resources:
-    requests:
-      storage: 10Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nextcloud-data
+  name: nextcloud-html
   namespace: nextcloud
 spec:
   accessModes:
@@ -56,27 +43,22 @@ spec:
     spec:
       containers:
         - name: nextcloud
-          # LinuxServer stable Nextcloud (includes nginx + PHP; SQLite by default)
-          image: lscr.io/linuxserver/nextcloud:latest
+          # Official Nextcloud Apache image (SQLite is fine for small homelabs)
+          image: nextcloud:latest
           imagePullPolicy: IfNotPresent
           env:
-            - name: PUID
-              value: "1000"
-            - name: PGID
-              value: "1000"
             - name: TZ
               value: "America/New_York"
           ports:
-            - name: https
-              containerPort: 443
+            - name: http
+              containerPort: 80
           volumeMounts:
-            - name: config
-              mountPath: /config
-            - name: data
-              mountPath: /data
+            - name: html
+              mountPath: /var/www/html
           readinessProbe:
-            tcpSocket:
-              port: https
+            httpGet:
+              path: /status.php
+              port: http
             initialDelaySeconds: 30
             periodSeconds: 15
           resources:
@@ -86,12 +68,9 @@ spec:
             limits:
               memory: 2Gi
       volumes:
-        - name: config
+        - name: html
           persistentVolumeClaim:
-            claimName: nextcloud-config
-        - name: data
-          persistentVolumeClaim:
-            claimName: nextcloud-data
+            claimName: nextcloud-html
 ---
 apiVersion: v1
 kind: Service
@@ -103,9 +82,9 @@ spec:
   selector:
     app: nextcloud
   ports:
-    - name: https
-      port: 443
-      targetPort: https
+    - name: http
+      port: 80
+      targetPort: http
 ---
 # Collabora Online Development Edition (CODE) — LibreOffice in the browser
 apiVersion: apps/v1
@@ -127,7 +106,6 @@ spec:
       labels:
         app: collabora
     spec:
-      # CODE's docker entrypoint expects a TTY
       containers:
         - name: collabora
           image: collabora/code:latest
@@ -137,8 +115,7 @@ spec:
           env:
             # configure-office.sh overwrites these with your real Nextcloud / Collabora URLs
             - name: aliasgroup1
-              value: "https://127.0.0.1:443"
-            # Temporary allow-all until configure-office.sh sets your real host regex
+              value: "http://127.0.0.1:80"
             - name: domain
               value: ".*"
             - name: server_name
@@ -150,8 +127,6 @@ spec:
             - name: password
               value: "changeme"
             - name: extra_params
-              # Plain HTTP Collabora for homelab LoadBalancer access (no reverse proxy required).
-              # ssl.ssl_verification=false lets Collabora fetch WOPI from self-signed Nextcloud.
               value: "--o:ssl.enable=false --o:ssl.termination=false --o:ssl.ssl_verification=false --o:welcome.enable=false --o:net.frame_ancestors=*"
           ports:
             - name: coolwsd
@@ -163,7 +138,6 @@ spec:
                 - SYS_CHROOT
                 - FOWNER
                 - CHOWN
-          # First start (image pull + coolwsd init) is slow
           startupProbe:
             httpGet:
               path: /

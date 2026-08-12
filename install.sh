@@ -28,8 +28,8 @@ cat <<EOF
 Pods are up.
 
 Next steps:
-  1. Open Nextcloud, accept the self-signed certificate warning, create your admin account:
-       https://${NC_IP}/
+  1. Open Nextcloud and create your admin account:
+       http://${NC_IP}/
   2. This script will finish Office (LibreOffice/Collabora) setup and verify connectivity
 
 EOF

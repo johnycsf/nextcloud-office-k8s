@@ -2,6 +2,8 @@
 
 Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/).
 
+Uses the **official** [`nextcloud`](https://hub.docker.com/_/nextcloud) image.
+
 Docker Compose version (no Kubernetes needed): [nextcloud-office-docker](https://github.com/johnycsf/nextcloud-office-docker)
 
 ## Why Office editing needs Collabora
@@ -15,12 +17,10 @@ References:
 
 ## What gets installed
 
-| Component | Port | Role |
-|-----------|------|------|
-| Nextcloud | `443` | Files + UI |
-| Collabora Online | `9980` | LibreOffice editing in the browser |
-
-Exact container images are defined in `deploy.yaml`.
+| Component | Image | Port | Role |
+|-----------|--------|------|------|
+| Nextcloud | `nextcloud:latest` (official) | `80` | Files + UI (HTTP) |
+| Collabora Online | `collabora/code:latest` | `9980` | LibreOffice editing in the browser |
 
 ### Reliability details (the parts that usually break)
 
@@ -29,7 +29,6 @@ Exact container images are defined in `deploy.yaml`.
 | Built-in in-container Office editor does not work | Disables it; uses external Collabora instead |
 | Nextcloud cannot reach Collabora via LAN IP (hairpin NAT) | `wopi_url` uses in-cluster DNS; `public_wopi_url` uses the LoadBalancer for browsers |
 | Collabora cannot reach Nextcloud via LAN IP | `hostAliases` maps your Nextcloud host/IP to the Service ClusterIP |
-| Self-signed Nextcloud cert | Certificate checks disabled for this homelab layout |
 | Slow Collabora first start | Longer startup probe + higher memory limit |
 
 ## What you need
@@ -37,7 +36,7 @@ Exact container images are defined in `deploy.yaml`.
 1. A working **Kubernetes** cluster (`kubectl` talks to it)
 2. **Longhorn** storage (or change `storageClassName` in `deploy.yaml`)
 3. About **3 GiB RAM free** for Collabora in addition to Nextcloud
-4. A browser that can reach **both** Nextcloud `:443` and Collabora `:9980`
+4. A browser that can reach **both** Nextcloud `:80` and Collabora `:9980`
 
 ## One-time: install Longhorn
 
@@ -89,7 +88,7 @@ Find it with:
 kubectl -n nextcloud get svc
 ```
 
-Use the `EXTERNAL-IP` column (on k3s that is often your node’s LAN IP). On many homelabs Nextcloud and Collabora share the same host IP and only differ by port (`443` vs `9980`), so both variables are often identical:
+Use the `EXTERNAL-IP` column (on k3s that is often your node’s LAN IP). On many homelabs Nextcloud and Collabora share the same host IP and only differ by port (`80` vs `9980`), so both variables are often identical:
 
 ```bash
 # Example only — substitute YOUR address from EXTERNAL-IP / your router
@@ -101,8 +100,8 @@ Examples of valid values:
 
 | Your situation | What to put |
 |----------------|-------------|
-| Browser opens `https://192.168.0.20/` | `NEXTCLOUD_HOST=192.168.0.20` (and usually the same for `COLLABORA_HOST`) |
-| Browser opens `https://nextcloud.lan/` | `NEXTCLOUD_HOST=nextcloud.lan` |
+| Browser opens `http://192.168.0.20/` | `NEXTCLOUD_HOST=192.168.0.20` (and usually the same for `COLLABORA_HOST`) |
+| Browser opens `http://nextcloud.lan/` | `NEXTCLOUD_HOST=nextcloud.lan` |
 | Different IPs for each service | Set each host to the matching `EXTERNAL-IP` |
 
 Do **not** use values like `10.43.x.x` / `10.42.x.x` ClusterIPs here — those are internal to the cluster and your browser cannot reach them for Office editing.
@@ -113,19 +112,18 @@ Do **not** use values like `10.43.x.x` / `10.42.x.x` ClusterIPs here — those a
 kubectl -n nextcloud get svc
 ```
 
-- Nextcloud: `https://EXTERNAL-IP/` (self-signed cert — accept the warning)
+- Nextcloud: `http://EXTERNAL-IP/`
 - Collabora discovery: `http://EXTERNAL-IP:9980/hosting/discovery`  
   (your browser should show XML containing `urlsrc=`)
 
 That same `EXTERNAL-IP` is what belongs in `NEXTCLOUD_HOST` / `COLLABORA_HOST` when you re-run `configure-office.sh`.
+
 ## Customize
 
 | Setting | Where | Default |
 |--------|--------|---------|
 | Timezone | Nextcloud `TZ` in `deploy.yaml` | `America/New_York` |
-| User/group | `PUID` / `PGID` in `deploy.yaml` | `1000` |
-| Config disk | `nextcloud-config` PVC | `10Gi` |
-| Files disk | `nextcloud-data` PVC | `100Gi` |
+| App + files disk | `nextcloud-html` PVC (`/var/www/html`) | `100Gi` |
 | Office dictionaries | Collabora `dictionaries` | `en_US` |
 
 ## Update
@@ -163,7 +161,7 @@ Deletes PVCs and your Nextcloud data.
 ## Notes for beginners
 
 - Keep **one replica** of Nextcloud (SQLite) and one of Collabora.
-- This homelab layout serves Collabora over **HTTP :9980** and Nextcloud over **HTTPS :443** with a self-signed cert so it works without a reverse proxy. For internet exposure, put **both** behind Caddy/Traefik/nginx with real certificates and re-run `configure-office.sh` with your DNS names.
+- This homelab layout serves Nextcloud over **HTTP :80** and Collabora over **HTTP :9980** so it works without a reverse proxy. For internet exposure, put **both** behind Caddy/Traefik/nginx with real HTTPS certificates and re-run `configure-office.sh` with your DNS names.
 - Official Nextcloud guides prefer a dedicated hostname for Collabora (e.g. `office.example.com`); the IP + LoadBalancer approach here is intentionally simpler for first-time homelab use.
 
 ## Contributing

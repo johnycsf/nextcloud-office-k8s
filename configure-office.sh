@@ -24,10 +24,9 @@ if [[ -z "${NC_HOST}" || -z "${COLLABORA_HOST}" ]]; then
   exit 1
 fi
 
-NC_URL="https://${NC_HOST}"
-# Browser-facing Collabora URL (must be reachable from your PC)
+# Official image serves HTTP on port 80 (add a reverse proxy later for HTTPS)
+NC_URL="http://${NC_HOST}"
 COLLABORA_PUBLIC_URL="http://${COLLABORA_HOST}:9980"
-# In-cluster Collabora URL (avoids hairpin NAT when Nextcloud talks to Collabora)
 COLLABORA_INTERNAL_URL="http://collabora.${NS}.svc.cluster.local:9980"
 DOMAIN_REGEX="$(escape_regex_dots "${NC_HOST}")"
 NC_CLUSTER_IP="$(kubectl -n "$NS" get svc nextcloud -o jsonpath='{.spec.clusterIP}')"
@@ -38,8 +37,6 @@ echo "Collabora (in-cluster) : ${COLLABORA_INTERNAL_URL}"
 echo "Nextcloud ClusterIP     : ${NC_CLUSTER_IP}"
 
 echo "Updating Collabora for this Nextcloud host..."
-# hostAliases: Collabora must reach the *public* Nextcloud host/IP. On many home
-# routers, pod → LAN-IP hairpin NAT fails; map the public host to ClusterIP instead.
 kubectl -n "$NS" patch deployment collabora --type=strategic -p "{
   \"spec\": {
     \"template\": {
@@ -56,7 +53,7 @@ kubectl -n "$NS" patch deployment collabora --type=strategic -p "{
 }"
 
 kubectl -n "$NS" set env deployment/collabora \
-  "aliasgroup1=${NC_URL}:443" \
+  "aliasgroup1=${NC_URL}:80" \
   "domain=${DOMAIN_REGEX}" \
   "server_name=${COLLABORA_HOST}:9980"
 
@@ -80,23 +77,18 @@ done
 echo "Configuring trusted domain / URL overrides..."
 occ config:system:set trusted_domains 1 --value="${NC_HOST}" >/dev/null
 occ config:system:set overwrite.cli.url --value="${NC_URL}" >/dev/null
-occ config:system:set overwriteprotocol --value="https" >/dev/null
+occ config:system:set overwriteprotocol --value="http" >/dev/null
 occ config:system:set allow_local_remote_servers --type=boolean --value=true >/dev/null
 
 echo "Installing Nextcloud Office (richdocuments) and pointing it at Collabora..."
-# Built-in CODE apps do not work on the LinuxServer image — keep them off.
 occ app:disable richdocumentscode 2>/dev/null || true
 occ app:disable richdocumentscode_arm64 2>/dev/null || true
-
-# Install is idempotent enough for homelab use; ignore "already installed".
 occ app:install richdocuments 2>/dev/null || true
 occ app:enable richdocuments
 
-# Split URLs: Nextcloud server uses in-cluster DNS; browsers use the LoadBalancer.
 occ config:app:set richdocuments wopi_url --value="${COLLABORA_INTERNAL_URL}"
 occ config:app:set richdocuments public_wopi_url --value="${COLLABORA_PUBLIC_URL}"
 occ config:app:set richdocuments disable_certificate_verification --type=string --value="yes"
-# Homelab: allow WOPI callbacks from cluster / LAN ranges
 occ config:app:set richdocuments wopi_allowlist --value="0.0.0.0/0,::/0"
 
 if occ richdocuments:activate-config >/dev/null 2>&1; then
