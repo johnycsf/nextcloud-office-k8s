@@ -1,9 +1,11 @@
-# Nextcloud + Collabora Online (LibreOffice) on Kubernetes
+# Nextcloud + Collabora Online (LibreOffice) + MariaDB on Kubernetes
 # Official Nextcloud image: https://hub.docker.com/_/nextcloud
+# Official MariaDB image:   https://hub.docker.com/_/mariadb
+# DB config guidance:       https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/linux_database_configuration.html
+# Compose-equivalent pattern: https://github.com/nextcloud/docker#running-this-image-with-docker-compose
 # Office integration:       https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html
 #
-# Built-in in-container Office editors are unreliable; this stack uses a separate
-# collabora/code Deployment for Word/Excel/PPT editing.
+# install.sh creates Secret nextcloud-db before applying this file.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -21,6 +23,114 @@ spec:
   resources:
     requests:
       storage: 100Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nextcloud-db
+  namespace: nextcloud
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db
+  namespace: nextcloud
+  labels:
+    app: db
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: db
+  template:
+    metadata:
+      labels:
+        app: db
+    spec:
+      containers:
+        - name: mariadb
+          image: mariadb:lts
+          imagePullPolicy: IfNotPresent
+          args:
+            - --transaction-isolation=READ-COMMITTED
+            - --binlog-format=ROW
+            - --character-set-server=utf8mb4
+            - --collation-server=utf8mb4_bin
+            - --innodb-file-per-table=1
+          env:
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db
+                  key: MYSQL_PASSWORD
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db
+                  key: MYSQL_ROOT_PASSWORD
+          ports:
+            - name: mysql
+              containerPort: 3306
+          volumeMounts:
+            - name: db
+              mountPath: /var/lib/mysql
+          readinessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect", "--innodb_initialized"]
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect", "--innodb_initialized"]
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: db
+          persistentVolumeClaim:
+            claimName: nextcloud-db
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  namespace: nextcloud
+spec:
+  type: ClusterIP
+  selector:
+    app: db
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,12 +153,29 @@ spec:
     spec:
       containers:
         - name: nextcloud
-          # Official Nextcloud Apache image (SQLite is fine for small homelabs)
+          # Official Nextcloud Apache image + MariaDB via MYSQL_* auto-config
           image: nextcloud:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: TZ
               value: "America/New_York"
+            - name: MYSQL_HOST
+              value: "db"
+            - name: MYSQL_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db
+                  key: MYSQL_DATABASE
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: nextcloud-db
+                  key: MYSQL_PASSWORD
           ports:
             - name: http
               containerPort: 80

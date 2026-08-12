@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Nextcloud + Collabora Online (LibreOffice) on a Kubernetes cluster with Longhorn.
+# Install Nextcloud + Collabora Online (LibreOffice) + MariaDB on Kubernetes with Longhorn.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,10 +7,24 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${ROOT}/lib.sh"
 
 need kubectl
+need openssl
 require_longhorn
 
-echo "Applying Nextcloud + Collabora manifests..."
+echo "Ensuring namespace + MariaDB Secret exist..."
+kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nextcloud
+EOF
+
+ensure_db_secret
+
+echo "Applying Nextcloud + MariaDB + Collabora manifests..."
 kubectl apply -f "${ROOT}/deploy.yaml"
+
+echo "Waiting for MariaDB to become ready..."
+kubectl -n nextcloud rollout status deployment/db --timeout=300s
 
 echo "Waiting for Nextcloud to become ready (first start can take a few minutes)..."
 kubectl -n nextcloud rollout status deployment/nextcloud --timeout=300s
@@ -25,10 +39,10 @@ fi
 
 cat <<EOF
 
-Pods are up.
+Pods are up (MariaDB + Nextcloud + Collabora).
 
 Next steps:
-  1. Open Nextcloud and create your admin account:
+  1. Open Nextcloud and create your admin account (database is already configured):
        http://${NC_IP}/
   2. This script will finish Office (LibreOffice/Collabora) setup and verify connectivity
 

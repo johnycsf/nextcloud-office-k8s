@@ -92,3 +92,28 @@ EOF
     exit 1
   fi
 }
+
+gen_password() {
+  openssl rand -base64 32 | tr -d '\n/+=\n' | head -c 32
+}
+
+ensure_db_secret() {
+  if kubectl -n "$NS" get secret nextcloud-db >/dev/null 2>&1; then
+    echo "Using existing Secret nextcloud-db"
+    return 0
+  fi
+  local user_pw root_pw
+  user_pw="$(gen_password)"
+  root_pw="$(gen_password)"
+  kubectl -n "$NS" create secret generic nextcloud-db \
+    --from-literal=MYSQL_DATABASE=nextcloud \
+    --from-literal=MYSQL_USER=nextcloud \
+    --from-literal=MYSQL_PASSWORD="${user_pw}" \
+    --from-literal=MYSQL_ROOT_PASSWORD="${root_pw}"
+  echo "Created Secret nextcloud-db with generated MariaDB passwords."
+}
+
+db_pod() {
+  kubectl -n "$NS" get pod -l app=db -o jsonpath='{.items[0].metadata.name}'
+}
+

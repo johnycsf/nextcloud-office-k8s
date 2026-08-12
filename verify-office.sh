@@ -14,14 +14,15 @@ fail() { echo "  FAIL  $*" >&2; FAIL=1; }
 
 echo "=== Office verification ==="
 
-if ! kubectl -n "$NS" get deploy nextcloud collabora >/dev/null 2>&1; then
-  fail "nextcloud/collabora Deployments not found in namespace ${NS}"
+if ! kubectl -n "$NS" get deploy nextcloud collabora db >/dev/null 2>&1; then
+  fail "nextcloud/collabora/db Deployments not found in namespace ${NS}"
   exit 1
 fi
 
+kubectl -n "$NS" rollout status deployment/db --timeout=60s >/dev/null
 kubectl -n "$NS" rollout status deployment/nextcloud --timeout=60s >/dev/null
 kubectl -n "$NS" rollout status deployment/collabora --timeout=60s >/dev/null
-pass "Deployments are rolled out"
+pass "Deployments are rolled out (db + nextcloud + collabora)"
 
 NC_HOST="${NEXTCLOUD_HOST:-$(wait_svc_address nextcloud)}"
 COLLABORA_HOST="${COLLABORA_HOST:-$(wait_svc_address collabora)}"
@@ -58,6 +59,20 @@ if ! occ status 2>/dev/null | grep -q 'installed: true'; then
   exit 1
 fi
 pass "Nextcloud is installed"
+
+DBTYPE="$(occ config:system:get dbtype 2>/dev/null || true)"
+if [[ "${DBTYPE}" == "mysql" ]]; then
+  pass "Database is MariaDB/MySQL (dbtype=${DBTYPE})"
+else
+  fail "Expected MariaDB/MySQL (dbtype=mysql), got: ${DBTYPE:-empty} — wipe PVCs and reinstall with MYSQL_* auto-config"
+fi
+
+if kubectl -n "$NS" get deploy db >/dev/null 2>&1; then
+  kubectl -n "$NS" rollout status deployment/db --timeout=60s >/dev/null
+  pass "MariaDB Deployment is rolled out"
+else
+  fail "MariaDB Deployment 'db' not found"
+fi
 
 WOPI_URL="$(occ config:app:get richdocuments wopi_url 2>/dev/null || true)"
 PUBLIC_WOPI="$(occ config:app:get richdocuments public_wopi_url 2>/dev/null || true)"
