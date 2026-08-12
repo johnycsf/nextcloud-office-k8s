@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 # Install Nextcloud + Collabora Online (LibreOffice) + MariaDB on Kubernetes with Longhorn.
+# Optional: ./install.sh --redis
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${ROOT}/lib.sh"
+
+parse_install_args "$@"
+if [[ "${SHOW_HELP}" -eq 1 ]]; then
+  print_install_help
+  exit 0
+fi
 
 need kubectl
 need openssl
@@ -28,6 +35,8 @@ kubectl apply -f "${ROOT}/deploy.yaml"
 echo "Waiting for MariaDB to become ready..."
 kubectl -n nextcloud rollout status deployment/db --timeout=300s
 
+apply_optional_redis
+
 echo "Waiting for Nextcloud to become ready (first start can take a few minutes)..."
 kubectl -n nextcloud rollout status deployment/nextcloud --timeout=300s
 
@@ -39,9 +48,15 @@ if [[ -z "${NC_IP}" ]]; then
   NC_IP="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
 fi
 
+REDIS_NOTE="Redis skipped (re-run with --redis to enable)."
+if redis_deployed; then
+  REDIS_NOTE="Redis is enabled (REDIS_HOST=redis)."
+fi
+
 cat <<EOF
 
 Pods are up (MariaDB + Nextcloud + Collabora).
+${REDIS_NOTE}
 
 Next steps:
   1. Open Nextcloud and create your admin account (database is already configured):

@@ -32,6 +32,7 @@ References:
 | Component | Image | Port | Role |
 |-----------|--------|------|------|
 | MariaDB | `mariadb:lts` (official) | `3306` (ClusterIP) | Nextcloud database |
+| Redis (optional) | `redis:alpine` (official) | `6379` (ClusterIP) | Cache / file locking (`./install.sh --redis`) |
 | Nextcloud | `nextcloud:latest` (official Docker Hub) | `80` | Files + UI (HTTP) |
 | Collabora Online | `collabora/code:latest` (official Collabora CODE) | `9980` | LibreOffice editing in the browser |
 
@@ -70,18 +71,29 @@ git clone https://github.com/johnycsf/nextcloud-office-k8s.git
 cd nextcloud-office-k8s
 chmod +x install.sh configure-office.sh verify-office.sh
 ./install.sh
+# optional Redis (official caching / file locking):
+# ./install.sh --redis
 ```
 
 What the script does:
 
 1. Creates Secret `nextcloud-db` (generated MariaDB passwords) if missing
 2. Applies `deploy.yaml` (MariaDB + Nextcloud + Collabora)
-3. Waits for Deployments (Collabora image is large — be patient)
-4. Waits for you to open Nextcloud and **create the admin account** (DB already configured)
-5. Runs `configure-office.sh` (URLs, apps, hostAliases)
-6. Runs `verify-office.sh` (DB type + Office connectivity)
+3. Optionally applies `deploy-redis.yaml` when you pass `--redis`
+4. Waits for Deployments (Collabora image is large — be patient)
+5. Waits for you to open Nextcloud and **create the admin account** (DB already configured)
+6. Runs `configure-office.sh` (URLs, apps, hostAliases)
+7. Runs `verify-office.sh` (DB type + Office connectivity)
 
 Then try: **+ New → Document / Spreadsheet / Presentation**.
+
+### Optional Redis
+
+```bash
+./install.sh --redis
+```
+
+Deploys official `redis:alpine` and sets `REDIS_HOST=redis` on Nextcloud ([caching docs](https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/caching_configuration.html)). Skip the flag for a smaller stack.
 
 Fresh install only — do **not** reuse a previous SQLite PVC with this MariaDB setup.
 
@@ -131,10 +143,7 @@ kubectl -n nextcloud get svc
 Only for clusters already on official Nextcloud + MariaDB from this repo:
 
 ```bash
-kubectl apply -f deploy.yaml
-kubectl -n nextcloud rollout status deployment/db
-kubectl -n nextcloud rollout status deployment/nextcloud
-kubectl -n nextcloud rollout status deployment/collabora
+./install.sh          # or: ./install.sh --redis
 ./configure-office.sh
 ./verify-office.sh
 ```

@@ -117,6 +117,58 @@ db_pod() {
   kubectl -n "$NS" get pod -l app=db -o jsonpath='{.items[0].metadata.name}'
 }
 
+parse_install_args() {
+  WITH_REDIS=0
+  SHOW_HELP=0
+  local arg
+  for arg in "$@"; do
+    case "${arg}" in
+      --redis) WITH_REDIS=1 ;;
+      -h|--help) SHOW_HELP=1 ;;
+      *)
+        echo "Unknown option: ${arg}" >&2
+        echo "Usage: ./install.sh [--redis]" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+print_install_help() {
+  cat <<'EOF'
+Usage: ./install.sh [--redis]
+
+  --redis   Also deploy official redis:alpine and set REDIS_HOST=redis on Nextcloud
+            (caching / transactional file locking). Optional; MariaDB is always used.
+
+Examples:
+  ./install.sh
+  ./install.sh --redis
+EOF
+}
+
+redis_deployed() {
+  kubectl -n "$NS" get deploy redis >/dev/null 2>&1
+}
+
+apply_optional_redis() {
+  if [[ "${WITH_REDIS:-0}" -ne 1 ]]; then
+    if redis_deployed; then
+      echo "Redis Deployment already present — leaving it enabled."
+      kubectl -n "$NS" set env deployment/nextcloud REDIS_HOST=redis >/dev/null
+    else
+      echo "Redis skipped (pass --redis to enable)."
+    fi
+    return 0
+  fi
+
+  echo "Applying optional Redis manifests..."
+  kubectl apply -f "${ROOT}/deploy-redis.yaml"
+  kubectl -n "$NS" rollout status deployment/redis --timeout=180s
+  kubectl -n "$NS" set env deployment/nextcloud REDIS_HOST=redis
+  echo "Redis enabled (REDIS_HOST=redis on Nextcloud)."
+}
+
 refuse_legacy_nextcloud_cluster() {
   if [[ "${I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL:-}" == "yes" ]]; then
     echo "Override set: I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL=yes — continuing."

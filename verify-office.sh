@@ -74,6 +74,24 @@ else
   fail "MariaDB Deployment 'db' not found"
 fi
 
+if redis_deployed; then
+  kubectl -n "$NS" rollout status deployment/redis --timeout=60s >/dev/null && pass "Redis Deployment is rolled out" || fail "Redis Deployment not ready"
+  RH="$(kubectl -n "$NS" get deploy nextcloud -o jsonpath='{range .spec.template.spec.containers[0].env[?(@.name=="REDIS_HOST")]}{.value}{end}' 2>/dev/null || true)"
+  if [[ "${RH}" == "redis" ]]; then
+    pass "Nextcloud has REDIS_HOST=redis"
+  else
+    fail "Redis is deployed but Nextcloud REDIS_HOST is '${RH:-empty}'"
+  fi
+  RPOD="$(kubectl -n "$NS" get pod -l app=redis -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  if [[ -n "${RPOD}" ]] && kubectl -n "$NS" exec "${RPOD}" -- redis-cli ping 2>/dev/null | grep -q PONG; then
+    pass "Redis responds to PING"
+  else
+    fail "Redis pod did not respond to PING"
+  fi
+else
+  pass "Redis not deployed (optional; use ./install.sh --redis)"
+fi
+
 WOPI_URL="$(occ config:app:get richdocuments wopi_url 2>/dev/null || true)"
 PUBLIC_WOPI="$(occ config:app:get richdocuments public_wopi_url 2>/dev/null || true)"
 
