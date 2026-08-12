@@ -75,12 +75,37 @@ Then try: **+ New → Document / Spreadsheet / Presentation**.
 ./verify-office.sh
 ```
 
-All checks should print `PASS`. If something fails:
+All checks should print `PASS`.
+
+### If Office fails — set your real LAN address
+
+`configure-office.sh` needs the address **your browser uses** to open Nextcloud and Collabora. That is usually your home-network / LAN IP (or hostname), **not** a Kubernetes ClusterIP / pod IP.
+
+`192.168.1.50` below is only an **example**. Replace it with whatever you actually open in the browser.
+
+Find it with:
 
 ```bash
+kubectl -n nextcloud get svc
+```
+
+Use the `EXTERNAL-IP` column (on k3s that is often your node’s LAN IP). On many homelabs Nextcloud and Collabora share the same host IP and only differ by port (`443` vs `9980`), so both variables are often identical:
+
+```bash
+# Example only — substitute YOUR address from EXTERNAL-IP / your router
 NEXTCLOUD_HOST=192.168.1.50 COLLABORA_HOST=192.168.1.50 ./configure-office.sh
 ./verify-office.sh
 ```
+
+Examples of valid values:
+
+| Your situation | What to put |
+|----------------|-------------|
+| Browser opens `https://192.168.0.20/` | `NEXTCLOUD_HOST=192.168.0.20` (and usually the same for `COLLABORA_HOST`) |
+| Browser opens `https://nextcloud.lan/` | `NEXTCLOUD_HOST=nextcloud.lan` |
+| Different IPs for each service | Set each host to the matching `EXTERNAL-IP` |
+
+Do **not** use values like `10.43.x.x` / `10.42.x.x` ClusterIPs here — those are internal to the cluster and your browser cannot reach them for Office editing.
 
 ## Open the apps
 
@@ -92,6 +117,7 @@ kubectl -n nextcloud get svc
 - Collabora discovery: `http://EXTERNAL-IP:9980/hosting/discovery`  
   (your browser should show XML containing `urlsrc=`)
 
+That same `EXTERNAL-IP` is what belongs in `NEXTCLOUD_HOST` / `COLLABORA_HOST` when you re-run `configure-office.sh`.
 ## Customize
 
 | Setting | Where | Default |
@@ -132,7 +158,7 @@ Deletes PVCs and your Nextcloud data.
 | “Unauthorized WOPI host” | Callback allow list / URL mismatch | Re-run `./configure-office.sh` |
 | Collabora pod `OOMKilled` | Not enough RAM | Free memory or raise the limit in `deploy.yaml` |
 | Collabora stuck not Ready | First pull/start still running | `kubectl -n nextcloud logs deploy/collabora -f` |
-| Works on LAN IP only after reconfigure | IP/DNS changed | Set `NEXTCLOUD_HOST` / `COLLABORA_HOST` and re-run configure |
+| Works on LAN IP only after reconfigure | Your PC’s LAN IP/DNS changed | Re-run configure with the new browser-facing address (see above) — not a ClusterIP |
 
 ## Notes for beginners
 
