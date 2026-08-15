@@ -142,15 +142,18 @@ kubectl -n nextcloud get svc
 
 ## Update
 
-Only for clusters already on official Nextcloud + MariaDB from this repo:
+Keep the stack current (safe while pods are running; brief rollout downtime):
 
 ```bash
-./install.sh          # or: ./install.sh --include-redis
-./configure-office.sh
-./verify-office.sh
+chmod +x update.sh
+./update.sh
 ```
 
-Nextcloud major version upgrades should be done **one major version at a time**.
+This re-applies manifests, rolls Deployments so `:latest` images refresh, and prunes **unused** images on this machine when possible (k3s `crictl rmi --prune` or Docker dangling prune). PVCs and Secrets are left untouched.
+
+Afterward you can run `./verify-office.sh`. Re-run `./configure-office.sh` only if your LAN IP/hostname changed.
+
+Nextcloud major upgrades: **one major version at a time**.
 
 SQLite / LinuxServer installs: see [BREAKING-CHANGES.md](BREAKING-CHANGES.md).
 
