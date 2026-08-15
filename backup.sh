@@ -22,7 +22,7 @@ Usage:
   ./backup.sh --restore --from /path/to/backup-root-or-snapshot
   ./backup.sh --help
 
-Disaster-recovery backups (separate from update.sh rollback tarballs).
+Disaster-recovery backups (also used by ./update.sh for pre-update snapshots into ./backups).
 
   --dest DIR    Create a new incremental snapshot under DIR.
                 Uses rsync hardlinks against the previous snapshot so
