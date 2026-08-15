@@ -156,6 +156,8 @@ To roll back later:
 ```bash
 chmod +x restore.sh
 ./restore.sh
+# or from an external copy of the backups folder:
+./restore.sh --external /path/to/backups
 ```
 
 This re-applies manifests, rolls Deployments so `:latest` images refresh, and prunes **unused** images on this machine when possible (k3s `crictl rmi --prune` or Docker dangling prune). PVCs and Secrets are left untouched.

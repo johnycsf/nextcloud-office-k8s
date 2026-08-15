@@ -6,20 +6,66 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${ROOT}/lib.sh"
 cd "$ROOT"
 
-need kubectl
+BACKUP_ROOT="backups"
 
-if [[ ! -d backups ]]; then
-  echo "No backups/ directory found. Run ./update.sh at least once first." >&2
+usage() {
+  cat <<'EOF'
+Usage: ./restore.sh [--external /path/to/backups]
+
+By default, snapshots are listed from ./backups/update-*.
+
+  --external DIR   Look in DIR instead (USB drive, NAS mount, etc.).
+                   DIR should contain update-YYYYMMDD-HHMMSS folders,
+                   or be one of those folders itself.
+  -h, --help       Show this help.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --external)
+      if [[ $# -lt 2 || -z "${2:-}" || "$2" == -* ]]; then
+        echo "Error: --external requires a path." >&2
+        usage >&2
+        exit 1
+      fi
+      BACKUP_ROOT="$2"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! -d "${BACKUP_ROOT}" ]]; then
+  echo "Backup location not found or not a directory: ${BACKUP_ROOT}" >&2
+  echo "Hint: pass a folder that contains update-* snapshots, e.g.:" >&2
+  echo "  ./restore.sh --external /mnt/usb/heimdall-backups" >&2
   exit 1
 fi
+BACKUP_ROOT="$(cd "${BACKUP_ROOT}" && pwd)"
 
-mapfile -t DIRS < <(ls -1dt backups/update-* 2>/dev/null || true)
+DIRS=()
+if [[ "$(basename "${BACKUP_ROOT}")" == update-* ]]; then
+  DIRS=("${BACKUP_ROOT}")
+else
+  mapfile -t DIRS < <(ls -1dt "${BACKUP_ROOT}"/update-* 2>/dev/null || true)
+fi
 if ((${#DIRS[@]} == 0)); then
-  echo "No backups/update-* snapshots found." >&2
+  echo "No update-* snapshots found under ${BACKUP_ROOT}" >&2
   exit 1
 fi
 
+echo "Using backup location: ${BACKUP_ROOT}"
 echo "Available backups (newest first):"
+
 i=1
 for d in "${DIRS[@]}"; do
   size="$(du -sh "$d" 2>/dev/null | awk '{print $1}')"
@@ -44,6 +90,7 @@ if ! [[ "${choice}" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#DIRS[@]} )); 
 fi
 SRC="${DIRS[$((choice - 1))]}"
 
+
 if [[ ! -f "${SRC}/html.tar.gz" && ! -f "${SRC}/nextcloud-db.sql" ]]; then
   echo "Backup ${SRC} has neither html.tar.gz nor nextcloud-db.sql" >&2
   exit 1
@@ -56,6 +103,8 @@ if [[ "${confirm}" != "restore" ]]; then
   echo "Aborted."
   exit 1
 fi
+
+need kubectl
 
 if [[ -f "${SRC}/secret-nextcloud-db.yaml" ]]; then
   echo "==> Restoring DB Secret..."
