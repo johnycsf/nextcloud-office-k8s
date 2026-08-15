@@ -35,6 +35,11 @@ Fresh-machine workflow:
   1) Install this stack on the new host (./install.sh) so runtime exists.
   2) ./backup.sh --restore --from /mnt/usb/my-backups
   3) Script replaces data/secrets and finishes app-specific repair (e.g. Nextcloud scan).
+
+Database safety:
+  MariaDB/Nextcloud  — logical dump (--single-transaction), never live datadir copy.
+  SQLite apps       — service stopped/scaled down, WAL checkpoint, then file copy.
+  Incremental rsync applies to files; each MariaDB dump is a full verified SQL file.
 EOF
 }
 
@@ -173,6 +178,54 @@ EOF
 
 
 
+
+# --- MariaDB safety (logical dump only; never rsync live datadir) ---
+verify_mariadb_dump() {
+  local f="$1"
+  if [[ ! -s "$f" ]]; then
+    echo "SQL dump missing or empty: $f" >&2
+    return 1
+  fi
+  if ! grep -q 'Dump completed' "$f"; then
+    echo "SQL dump looks incomplete (no 'Dump completed' marker): $f" >&2
+    return 1
+  fi
+  if ! grep -qE 'CREATE TABLE|INSERT INTO' "$f"; then
+    echo "SQL dump has no CREATE TABLE/INSERT INTO — refusing: $f" >&2
+    return 1
+  fi
+  local bytes
+  bytes="$(wc -c <"$f" | tr -d ' ')"
+  echo "    Verified MariaDB dump (${bytes} bytes)."
+}
+
+sha256_file() {
+  local f="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$f" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$f" | awk '{print $1}'
+  else
+    echo "unavailable"
+  fi
+}
+
+verify_dump_checksum() {
+  local f="$1"
+  local meta="$2"
+  local expected=""
+  expected="$(grep -E '^db_sha256=' "$meta" 2>/dev/null | cut -d= -f2- || true)"
+  [[ -n "$expected" && "$expected" != "unavailable" ]] || return 0
+  local actual
+  actual="$(sha256_file "$f")"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "SQL dump checksum mismatch (expected ${expected}, got ${actual})." >&2
+    echo "Refusing restore — file may be corrupt or truncated." >&2
+    return 1
+  fi
+  echo "    Checksum OK (${actual})."
+}
+
 wait_nextcloud_ready() {
   echo "Waiting for Nextcloud to become ready..."
   local i
@@ -215,6 +268,7 @@ push_pod_tree() {
   tar -C "$src" -cf - . | kubectl -n "$NS" exec -i "$pod" -- tar -C "$remote" -xf -
 }
 
+
 do_backup() {
   need kubectl
   need_rsync
@@ -222,23 +276,39 @@ do_backup() {
   DEST="$(mkdir -p "$DEST" && cd "$DEST" && pwd)"
   prepare_snapshot_dirs "$DEST"
   echo "==> Snapshot ${SNAP_NAME} -> ${SNAP_DIR}"
+  echo "==> DB strategy: logical MariaDB dump (safe). HTML files use incremental rsync."
+  echo "    Never snapshotting live PVC InnoDB files."
 
   local ncpod dbpod
   ncpod="$(nextcloud_pod)"
   dbpod="$(kubectl -n "$NS" get pod -l app=db -o jsonpath='{.items[0].metadata.name}')"
-  [[ -n "$ncpod" && -n "$dbpod" ]] || { echo "Need running nextcloud + db pods." >&2; exit 1; }
+  [[ -n "$ncpod" && -n "$dbpod" ]] || { echo "Need running nextcloud + db pods." >&2; rm -rf "${SNAP_DIR}"; exit 1; }
 
-  echo "==> Maintenance mode on..."
-  occ maintenance:mode --on || true
+  maintenance_off() { occ maintenance:mode --off >/dev/null 2>&1 || true; }
+  cleanup_failed_snap() {
+    maintenance_off
+    rm -rf "${SNAP_DIR}"
+  }
+  trap cleanup_failed_snap EXIT
+
+  echo "==> Enabling Nextcloud maintenance mode..."
+  occ maintenance:mode --on
 
   echo "==> Dumping MariaDB from ${dbpod}..."
-  local db user pass
+  local db user pass dump
   db="$(kubectl -n "$NS" get secret nextcloud-db -o jsonpath='{.data.MYSQL_DATABASE}' | base64 -d)"
   user="$(kubectl -n "$NS" get secret nextcloud-db -o jsonpath='{.data.MYSQL_USER}' | base64 -d)"
   pass="$(kubectl -n "$NS" get secret nextcloud-db -o jsonpath='{.data.MYSQL_PASSWORD}' | base64 -d)"
+  dump="${SNAP_DIR}/nextcloud-db.sql"
   kubectl -n "$NS" exec "${dbpod}" -- \
-    mariadb-dump -u"${user}" -p"${pass}" --single-transaction --routines "${db}" \
-    >"${SNAP_DIR}/nextcloud-db.sql"
+    mariadb-dump -u"${user}" -p"${pass}" \
+      --single-transaction --quick --routines --triggers --events --hex-blob \
+      --add-drop-table --default-character-set=utf8mb4 \
+      "${db}" \
+    >"${dump}"
+  verify_mariadb_dump "${dump}"
+  local sum
+  sum="$(sha256_file "${dump}")"
 
   echo "==> Archiving /var/www/html from ${ncpod}..."
   local staging
@@ -252,13 +322,23 @@ do_backup() {
   kubectl -n "$NS" get secret nextcloud-db -o yaml >"${SNAP_DIR}/secret-nextcloud-db.yaml"
   cp -a "${ROOT}/deploy.yaml" "${SNAP_DIR}/" 2>/dev/null || true
   [[ -f "${ROOT}/deploy-redis.yaml" ]] && cp -a "${ROOT}/deploy-redis.yaml" "${SNAP_DIR}/"
-  write_meta "${SNAP_DIR}" "$STACK_ID" "nextcloud html + mariadb dump"
+  cat >"${SNAP_DIR}/META.txt" <<EOF
+stack=${STACK_ID}
+created=$(date -Iseconds)
+host=$(hostname 2>/dev/null || echo unknown)
+note=nextcloud html + verified mariadb logical dump
+db_engine=mariadb
+db_method=mariadb-dump --single-transaction
+db_sha256=${sum}
+files=/var/www/html
+datadir_excluded=PVC nextcloud-db raw files
+EOF
 
-  echo "==> Maintenance mode off..."
-  occ maintenance:mode --off || true
+  trap - EXIT
+  maintenance_off
   finalize_snapshot "$DEST"
   prune_snapshots "$DEST" "${KEEP}"
-  echo "Tip: store this backup root on an external drive or NAS (hardlinks need one filesystem)."
+  echo "Backup OK. Tip: store on external drive/NAS (hardlinks need one filesystem)."
 }
 
 do_restore() {
@@ -270,14 +350,24 @@ do_restore() {
   echo "Restoring from: $snap"
   [[ -d "${snap}/files" ]] || { echo "Missing files/" >&2; exit 1; }
 
+  if [[ ! -f "${snap}/nextcloud-db.sql" ]]; then
+    if [[ "${FORCE_FILES_ONLY:-}" == "yes" ]]; then
+      echo "FORCE_FILES_ONLY=yes — restoring files without DB (dangerous)." >&2
+    else
+      echo "Refusing restore: no nextcloud-db.sql in snapshot." >&2
+      exit 1
+    fi
+  else
+    verify_mariadb_dump "${snap}/nextcloud-db.sql"
+    verify_dump_checksum "${snap}/nextcloud-db.sql" "${snap}/META.txt"
+  fi
+
   echo
   cat <<'EOF'
 This replaces Nextcloud files + DB so a new cluster matches the backup,
 then runs occ repair and files:scan --all.
 
-Recommended:
-  1) ./install.sh on the new cluster
-  2) ./backup.sh --restore --from /path/to/backups
+Nextcloud will be scaled down during SQL import so the app cannot write mid-restore.
 EOF
   read -r -p "Type 'restore' to continue: " confirm || true
   [[ "${confirm}" == "restore" ]] || { echo "Aborted."; exit 1; }
@@ -291,28 +381,37 @@ EOF
     kubectl -n "$NS" apply -f "${snap}/secret-nextcloud-db.yaml"
   fi
 
+  echo "==> Scaling Nextcloud to 0 during DB import..."
+  kubectl -n "$NS" scale deployment/nextcloud --replicas=0
+  kubectl -n "$NS" wait --for=delete pod -l app=nextcloud --timeout=180s 2>/dev/null || true
+
   kubectl -n "$NS" rollout status deployment/db --timeout=300s
-  local dbpod ncpod
+  local dbpod
   dbpod="$(kubectl -n "$NS" get pod -l app=db -o jsonpath='{.items[0].metadata.name}')"
 
   if [[ -f "${snap}/nextcloud-db.sql" ]]; then
-    echo "==> Importing SQL into ${dbpod}..."
+    echo "==> Importing verified SQL into ${dbpod}..."
     local db user pass
     db="$(kubectl -n "$NS" get secret nextcloud-db -o jsonpath='{.data.MYSQL_DATABASE}' | base64 -d)"
     user="$(kubectl -n "$NS" get secret nextcloud-db -o jsonpath='{.data.MYSQL_USER}' | base64 -d)"
     pass="$(kubectl -n "$NS" get secret nextcloud-db -o jsonpath='{.data.MYSQL_PASSWORD}' | base64 -d)"
-    kubectl -n "$NS" exec -i "${dbpod}" -- \
-      mariadb -u"${user}" -p"${pass}" "${db}" \
-      <"${snap}/nextcloud-db.sql"
+    if ! kubectl -n "$NS" exec -i "${dbpod}" -- \
+        mariadb -u"${user}" -p"${pass}" "${db}" \
+        <"${snap}/nextcloud-db.sql"; then
+      echo "SQL IMPORT FAILED — leaving Nextcloud scaled to 0. Fix dump and retry." >&2
+      exit 1
+    fi
+    echo "    SQL import completed."
   fi
 
+  echo "==> Scaling Nextcloud back up and restoring HTML..."
+  kubectl -n "$NS" scale deployment/nextcloud --replicas=1
   kubectl -n "$NS" rollout status deployment/nextcloud --timeout=300s
+  local ncpod
   ncpod="$(nextcloud_pod)"
-  echo "==> Restoring HTML into ${ncpod} (may take a while)..."
   push_pod_tree "$ncpod" /var/www/html "${snap}/files"
 
-  kubectl -n "$NS" rollout restart deployment/nextcloud deployment/db
-  kubectl -n "$NS" rollout status deployment/db --timeout=300s
+  kubectl -n "$NS" rollout restart deployment/nextcloud
   kubectl -n "$NS" rollout status deployment/nextcloud --timeout=300s
   wait_nextcloud_ready
   post_restore_nextcloud
