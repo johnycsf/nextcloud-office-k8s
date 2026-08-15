@@ -1,5 +1,7 @@
 # nextcloud-office-k8s
 
+![Repobeats analytics image](https://repobeats.axiom.co/api/embed/bbf1d0685d6a0387a3d1479b5c486c911d26b7a6.svg "Repobeats analytics image")
+
 Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/) and **MariaDB** (not SQLite).
 
 Uses the **official** [`nextcloud`](https://hub.docker.com/_/nextcloud) and [`mariadb:lts`](https://hub.docker.com/_/mariadb) images.
@@ -177,9 +179,6 @@ Deletes PVCs and your Nextcloud + MariaDB data.
 - This homelab layout serves Nextcloud over **HTTP :80** and Collabora over **HTTP :9980** so it works without a reverse proxy. For internet exposure, put **both** behind Caddy/Traefik/nginx with real HTTPS certificates and re-run `configure-office.sh` with your DNS names.
 - Official Nextcloud guides prefer a dedicated hostname for Collabora (e.g. `office.example.com`); the IP + LoadBalancer approach here is intentionally simpler for first-time homelab use.
 
-## Repository activity
-
-![Repobeats analytics image](https://repobeats.axiom.co/api/embed/bbf1d0685d6a0387a3d1479b5c486c911d26b7a6.svg "Repobeats analytics image")
 
 ## Contributing
 
