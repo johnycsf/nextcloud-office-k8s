@@ -194,7 +194,7 @@ Keep the backup root on **one filesystem** so hardlinks work. Prefer an external
 **Database safety:** Nextcloud uses a verified MariaDB *logical* dump (`mariadb-dump --single-transaction`) — the live `data/db` / DB PVC files are never rsync'd. SQLite apps (Heimdall, Vaultwarden) are stopped or scaled to 0, WAL-checkpointed when `sqlite3` is available, integrity-checked, then copied. Incremental hardlinks apply to file trees; each SQL dump is a full verified file with a SHA-256 in `META.txt`.
 
 
-For Nextcloud, restore also imports MariaDB, runs `occ` repair helpers, and `files:scan --all` (can take a long time), then re-applies Office/trusted-domain settings when possible.
+For Nextcloud, restore also imports MariaDB, runs `occ` repair helpers, and `files:scan --all` with a live **percentage progress bar** (can still take a long time on large libraries), then re-applies Office/trusted-domain settings when possible.
 
 ## Uninstall
 

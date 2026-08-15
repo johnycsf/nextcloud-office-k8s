@@ -334,6 +334,76 @@ wait_nextcloud_ready() {
   exit 1
 }
 
+print_scan_pct() {
+  local label="$1" count="$2" total="$3"
+  local pct=0 width=30 filled empty bar
+  if (( total > 0 )); then
+    pct=$((count * 100 / total))
+    (( pct > 100 )) && pct=100
+  fi
+  filled=$((pct * width / 100))
+  printf -v bar '%*s' "$filled" ''
+  bar=${bar// /#}
+  printf -v empty '%*s' "$((width - filled))" ''
+  empty=${empty// /-}
+  printf '\r==> %s: [%s%s] %3d%% (%s/%s)   ' \
+    "$label" "$bar" "$empty" "$pct" "$count" "$total" >&2
+}
+
+count_nc_data_entries() {
+  local pod
+  pod="$(nextcloud_pod)"
+  kubectl -n "$NS" exec "$pod" -- sh -c \
+    'find /var/www/html/data \( -type f -o -type d \) 2>/dev/null | wc -l' \
+    | tr -d ' \r\n'
+}
+
+occ_files_scan_with_progress() {
+  local label="${1:-files:scan}"
+  shift || true
+  local total=0 count=0 last_print=0 line pipe_rc=0
+  echo "==> ${label} (progress below; large libraries can take a long time)..."
+  total="$(count_nc_data_entries 2>/dev/null || echo 0)"
+  [[ "$total" =~ ^[0-9]+$ ]] || total=0
+  if (( total > 0 )); then
+    echo "    Estimated entries under data/: ${total}"
+  else
+    echo "    Could not pre-count entries — showing per-user progress when available."
+  fi
+  print_scan_pct "$label" 0 "$total"
+
+  set +e
+  occ "$@" -v 2>&1 | while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ [Uu]ser[[:space:]]+([0-9]+)[[:space:]]+out[[:space:]]+of[[:space:]]+([0-9]+) ]]; then
+      printf '\n    %s\n' "$line" >&2
+      if (( total <= 0 )); then
+        print_scan_pct "$label" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+      fi
+      continue
+    fi
+    if [[ "$line" == Completed* ]] || [[ "$line" == +* ]] || [[ "$line" == Entry\ exclusions* ]]; then
+      printf '\n    %s\n' "$line" >&2
+      continue
+    fi
+    if [[ "$line" == $'\t'* ]] || [[ "$line" == /* ]]; then
+      count=$((count + 1))
+      if (( total > 0 )); then
+        if (( count - last_print >= 25 || count >= total || count == 1 )); then
+          print_scan_pct "$label" "$count" "$total"
+          last_print=$count
+        fi
+      fi
+    fi
+  done
+  pipe_rc=${PIPESTATUS[0]}
+  set -e
+  if (( total > 0 )); then
+    print_scan_pct "$label" "$total" "$total"
+  fi
+  printf '\n' >&2
+  return "${pipe_rc:-0}"
+}
+
 post_restore_nextcloud() {
   echo "==> Repair / reindex..."
   occ maintenance:mode --off || true
@@ -341,8 +411,10 @@ post_restore_nextcloud() {
   occ db:add-missing-columns || true
   occ db:add-missing-primary-keys || true
   occ maintenance:repair --include-expensive || true
-  echo "==> files:scan --all (can take a long time)..."
-  occ files:scan --all
+  occ_files_scan_with_progress "files:scan" files:scan --all || {
+    echo "WARNING: files:scan reported an error — check output above." >&2
+  }
+  echo "==> Scanning app data..."
   occ files:scan-app-data || true
   if [[ -x "${ROOT}/configure-office.sh" ]]; then
     echo "==> Re-applying Collabora / trusted domains for this cluster..."
