@@ -199,6 +199,10 @@ verify_mariadb_dump() {
   echo "    Verified MariaDB dump (${bytes} bytes)."
 }
 
+
+# --- Snapshot integrity (SHA256) ---
+# Payload files are listed in SHA256SUMS. META.txt holds snapshot_sha256 (hash of SHA256SUMS).
+# Restore verifies and WARNS on mismatch but does not abort.
 sha256_file() {
   local f="$1"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -210,6 +214,94 @@ sha256_file() {
   fi
 }
 
+seal_snapshot() {
+  local snap="$1"
+  echo "==> Sealing snapshot with SHA256 manifests..."
+  if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+    echo "WARNING: sha256sum/shasum not found — snapshot will lack integrity key." >&2
+    return 0
+  fi
+  (
+    cd "$snap" || exit 1
+    rm -f SHA256SUMS
+    if command -v sha256sum >/dev/null 2>&1; then
+      find . -type f ! -name SHA256SUMS ! -name META.txt -print0 \
+        | sort -z \
+        | xargs -0 -r sha256sum >SHA256SUMS
+    else
+      : >SHA256SUMS
+      find . -type f ! -name SHA256SUMS ! -name META.txt -print0 | sort -z | while IFS= read -r -d '' f; do
+        printf '%s  %s
+' "$(shasum -a 256 "$f" | awk '{print $1}')" "$f" >>SHA256SUMS
+      done
+    fi
+    if [[ ! -s SHA256SUMS ]]; then
+      echo "WARNING: SHA256SUMS is empty (no payload files?)." >&2
+    fi
+  )
+  local sum
+  sum="$(sha256_file "${snap}/SHA256SUMS")"
+  if [[ ! -f "${snap}/META.txt" ]]; then
+    printf 'stack=unknown
+created=%s
+' "$(date -Iseconds)" >"${snap}/META.txt"
+  fi
+  if grep -q '^snapshot_sha256=' "${snap}/META.txt" 2>/dev/null; then
+    sed -i "s|^snapshot_sha256=.*|snapshot_sha256=${sum}|" "${snap}/META.txt"
+  else
+    printf 'snapshot_sha256=%s
+' "$sum" >>"${snap}/META.txt"
+  fi
+  echo "    snapshot_sha256=${sum}"
+  echo "    Wrote SHA256SUMS + META snapshot_sha256 key."
+}
+
+verify_snapshot_integrity() {
+  local snap="$1"
+  local warn=0
+  echo "==> Checking snapshot integrity (SHA256)..."
+  if [[ ! -f "${snap}/SHA256SUMS" ]]; then
+    echo "WARNING: No SHA256SUMS manifest — cannot verify integrity (legacy or incomplete backup)." >&2
+    echo "         Restore will continue, but corruption cannot be ruled out." >&2
+    return 0
+  fi
+  if ! command -v sha256sum >/dev/null 2>&1; then
+    echo "WARNING: sha256sum not found — skipping per-file check." >&2
+    warn=1
+  else
+    local out
+    set +e
+    out="$(cd "$snap" && sha256sum -c SHA256SUMS 2>&1)"
+    local rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+      echo "WARNING: SHA256 file verification FAILED — integrity is lost; restore may cause issues." >&2
+      printf '%s
+' "$out" | grep -v ': OK$' | head -n 40 >&2 || true
+      warn=1
+    fi
+  fi
+  local expected actual
+  expected="$(grep -E '^snapshot_sha256=' "${snap}/META.txt" 2>/dev/null | cut -d= -f2- || true)"
+  actual="$(sha256_file "${snap}/SHA256SUMS")"
+  if [[ -z "$expected" || "$expected" == "unavailable" ]]; then
+    echo "WARNING: META.txt has no snapshot_sha256 key." >&2
+    warn=1
+  elif [[ "$actual" != "$expected" ]]; then
+    echo "WARNING: SHA256SUMS does not match META snapshot_sha256 — integrity is lost; restore may cause issues." >&2
+    echo "         expected=${expected}" >&2
+    echo "         actual=${actual}" >&2
+    warn=1
+  fi
+  if [[ "$warn" -eq 0 ]]; then
+    echo "    Integrity OK (snapshot_sha256=${actual})."
+  else
+    echo "    Continuing restore despite integrity warnings (not aborting)." >&2
+  fi
+  return 0
+}
+
+
 verify_dump_checksum() {
   local f="$1"
   local meta="$2"
@@ -219,12 +311,14 @@ verify_dump_checksum() {
   local actual
   actual="$(sha256_file "$f")"
   if [[ "$actual" != "$expected" ]]; then
-    echo "SQL dump checksum mismatch (expected ${expected}, got ${actual})." >&2
-    echo "Refusing restore — file may be corrupt or truncated." >&2
-    return 1
+    echo "WARNING: SQL dump checksum mismatch (expected ${expected}, got ${actual})." >&2
+    echo "         Integrity is lost for the database dump; restore may cause issues." >&2
+    echo "         Continuing anyway (will not abort)." >&2
+    return 0
   fi
-  echo "    Checksum OK (${actual})."
+  echo "    DB dump checksum OK (${actual})."
 }
+
 
 wait_nextcloud_ready() {
   echo "Waiting for Nextcloud to become ready..."
@@ -336,6 +430,7 @@ EOF
 
   trap - EXIT
   maintenance_off
+  seal_snapshot "${SNAP_DIR}"
   finalize_snapshot "$DEST"
   prune_snapshots "$DEST" "${KEEP}"
   echo "Backup OK. Tip: store on external drive/NAS (hardlinks need one filesystem)."
@@ -348,6 +443,7 @@ do_restore() {
   local snap
   snap="$(resolve_snapshot_dir "$FROM")"
   echo "Restoring from: $snap"
+  verify_snapshot_integrity "$snap"
   [[ -d "${snap}/files" ]] || { echo "Missing files/" >&2; exit 1; }
 
   if [[ ! -f "${snap}/nextcloud-db.sql" ]]; then
