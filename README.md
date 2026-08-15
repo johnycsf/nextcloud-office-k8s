@@ -168,6 +168,28 @@ Nextcloud major upgrades: **one major version at a time**.
 
 SQLite / LinuxServer installs: see [BREAKING-CHANGES.md](BREAKING-CHANGES.md).
 
+
+## Disaster recovery (full backup / restore)
+
+Incremental snapshots via `rsync` hardlinks (unchanged files are not re-copied). Separate from `update.sh` rollback tarballs.
+
+```bash
+chmod +x backup.sh
+
+# Backup to USB/NAS/external path (repeat anytime; later runs are incremental)
+./backup.sh --dest /mnt/usb/nextcloud-office-k8s-backups
+./backup.sh --dest /mnt/usb/nextcloud-office-k8s-backups --keep 5   # optional: retain only newest N
+
+# On a brand-new machine/cluster after ./install.sh:
+./backup.sh --restore --from /mnt/usb/nextcloud-office-k8s-backups
+# or a specific snapshot:
+./backup.sh --restore --from /mnt/usb/nextcloud-office-k8s-backups/snapshots/YYYYMMDD-HHMMSS
+```
+
+Keep the backup root on **one filesystem** so hardlinks work. Prefer an external drive, NAS, or cloud sync of that folder.
+
+For Nextcloud, restore also imports MariaDB, runs `occ` repair helpers, and `files:scan --all` (can take a long time), then re-applies Office/trusted-domain settings when possible.
+
 ## Uninstall
 
 ```bash
