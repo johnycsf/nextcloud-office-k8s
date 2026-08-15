@@ -50,10 +50,11 @@ References:
 
 ## What you need
 
-1. A working **Kubernetes** cluster (`kubectl` talks to it)
-2. **Longhorn** storage (or change `storageClassName` in `deploy.yaml`)
-3. About **3 GiB RAM free** for Collabora in addition to Nextcloud + MariaDB
-4. A browser that can reach **both** Nextcloud `:80` and Collabora `:9980`
+- A Kubernetes cluster (`kubectl` context already set)
+- `sudo` on this machine so `./install.sh` can install missing tools (kubectl, helm, curl, openssl, rsync, …)
+- Disk for PersistentVolumes (Longhorn is installed automatically if the `longhorn` StorageClass is missing)
+
+`./install.sh` detects your OS and installs host dependencies automatically.
 
 ## One-time: install Longhorn
 

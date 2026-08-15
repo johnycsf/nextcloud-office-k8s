@@ -4,6 +4,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deps.sh
+source "${ROOT}/deps.sh"
 # shellcheck source=lib.sh
 source "${ROOT}/lib.sh"
 
@@ -13,9 +15,8 @@ if [[ "${SHOW_HELP}" -eq 1 ]]; then
   exit 0
 fi
 
-need kubectl
-need openssl
-require_longhorn
+ensure_host_deps k8s
+ensure_longhorn_storage
 
 refuse_legacy_nextcloud_cluster
 
