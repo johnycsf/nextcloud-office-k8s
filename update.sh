@@ -5,6 +5,37 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "${ROOT}/lib.sh"
+cd "$ROOT"
+
+KEEP_FILE=".backup-keep-count"
+DEFAULT_KEEP=3
+
+print_offsite_tip() {
+  cat <<'EOF'
+
+Tip: Local backups under backups/ can fill your disk over time.
+Copy important snapshots to an external drive, NAS, or cloud
+(rclone, Backblaze B2, S3, Nextcloud, etc.), then keep fewer copies here.
+Restore later with: ./restore.sh
+EOF
+}
+
+prune_old_backups() {
+  local keep="$1"
+  mkdir -p backups
+  mapfile -t dirs < <(ls -1dt backups/update-* 2>/dev/null || true)
+  local total="${#dirs[@]}"
+  if (( total <= keep )); then
+    echo "Backup retention: keeping all ${total} local snapshot(s) (limit ${keep})."
+    return 0
+  fi
+  local i
+  for (( i = keep; i < total; i++ )); do
+    echo "Removing old backup: ${dirs[$i]}"
+    rm -rf "${dirs[$i]}"
+  done
+  echo "Backup retention: kept ${keep} newest snapshot(s); removed $((total - keep)) older one(s)."
+}
 
 ask_backup_retention() {
   local dir="$1"
@@ -13,6 +44,12 @@ ask_backup_retention() {
   fi
   if [[ ! -t 0 ]]; then
     echo "No interactive terminal — keeping backup at ${dir}"
+    local keep="${DEFAULT_KEEP}"
+    [[ -f "${KEEP_FILE}" ]] && keep="$(tr -dc '0-9' <"${KEEP_FILE}" || true)"
+    [[ -z "${keep}" ]] && keep="${DEFAULT_KEEP}"
+    echo "${keep}" >"${KEEP_FILE}"
+    prune_old_backups "${keep}"
+    print_offsite_tip
     return 0
   fi
   echo
@@ -21,15 +58,28 @@ ask_backup_retention() {
   case "${reply:-Y}" in
     n|N|no|NO)
       rm -rf "${dir}"
-      rmdir "${ROOT}/backups" 2>/dev/null || true
+      rmdir backups 2>/dev/null || true
       echo "Backup deleted."
       ;;
     *)
       echo "Backup kept."
-      echo "  See ${dir}/RESTORE.txt if you need to roll back."
+      local default="${DEFAULT_KEEP}"
+      [[ -f "${KEEP_FILE}" ]] && default="$(tr -dc '0-9' <"${KEEP_FILE}" || true)"
+      [[ -z "${default}" ]] && default="${DEFAULT_KEEP}"
+      local keep=""
+      read -r -p "How many local update backups should we keep on this disk? [${default}] " keep || true
+      keep="$(printf '%s' "${keep:-$default}" | tr -dc '0-9')"
+      [[ -z "${keep}" || "${keep}" -lt 1 ]] && keep="${default}"
+      echo "${keep}" >"${KEEP_FILE}"
+      prune_old_backups "${keep}"
+      print_offsite_tip
+      echo "  This snapshot: ${dir}"
+      echo "  Manual restore: ./restore.sh"
       ;;
   esac
 }
+
+
 
 create_backup() {
   BACKUP_DIR="${ROOT}/backups/update-$(date +%Y%m%d-%H%M%S)"
@@ -63,7 +113,9 @@ create_backup() {
   fi
 
   cat >"${BACKUP_DIR}/RESTORE.txt" <<EOF
-Nextcloud k8s rollback (summary):
+Prefer: ./restore.sh
+
+Manual Nextcloud k8s rollback (summary):
 
   kubectl -n nextcloud apply -f ${BACKUP_DIR}/secret-nextcloud-db.yaml
 

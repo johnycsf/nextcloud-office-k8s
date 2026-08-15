@@ -149,7 +149,14 @@ chmod +x update.sh
 ./update.sh
 ```
 
-Before changing anything, the script writes a timestamped rollback copy under `backups/` and, after a successful update, asks whether to **keep** or **delete** it.
+Before changing anything, the script writes a timestamped rollback copy under `backups/`. After a successful update it asks whether to **keep** or **delete** that snapshot, and how many local copies to retain (older ones are pruned). Copy important backups to an external drive, NAS, or cloud so they do not fill this disk.
+
+To roll back later:
+
+```bash
+chmod +x restore.sh
+./restore.sh
+```
 
 This re-applies manifests, rolls Deployments so `:latest` images refresh, and prunes **unused** images on this machine when possible (k3s `crictl rmi --prune` or Docker dangling prune). PVCs and Secrets are left untouched.
 
