@@ -291,7 +291,7 @@ host_tcp_port_in_use() {
 
 this_compose_publishes_port() {
   local port="$1"
-  command -v docker >/dev/null 2>&1 || return 1
+  # Uses remembered CONTAINER_ENGINE via compose(); no hard docker requirement.
   compose ps --format '{{.Ports}}' 2>/dev/null \
     | grep -E "(^|[, ])([0-9.]+|\[::\]|\*|0\.0\.0\.0):${port}->" >/dev/null 2>&1
 }
@@ -655,6 +655,79 @@ compose_engine() {
 compose() {
   compose_engine "$@"
 }
+
+
+load_container_engine() {
+  # Read remembered engine from .env (set at install) into the current shell.
+  CONTAINER_ENGINE="$(_container_engine)"
+  export CONTAINER_ENGINE
+}
+
+need_container_engine() {
+  # Require the runtime matching CONTAINER_ENGINE in .env (not always docker).
+  load_container_engine
+  case "${CONTAINER_ENGINE}" in
+    podman)
+      if ! command -v podman >/dev/null 2>&1; then
+        echo "Missing: podman (CONTAINER_ENGINE=podman in .env — re-run ./manage.sh install or install Podman)." >&2
+        return 1
+      fi
+      _deps_ensure_podman_api >/dev/null 2>&1 || true
+      if ! command -v podman-compose >/dev/null 2>&1 && ! podman compose version >/dev/null 2>&1; then
+        echo "Missing: podman-compose (preferred) or podman compose." >&2
+        return 1
+      fi
+      ;;
+    *)
+      if ! command -v docker >/dev/null 2>&1; then
+        echo "Missing: docker (CONTAINER_ENGINE=docker in .env)." >&2
+        return 1
+      fi
+      if ! docker compose version >/dev/null 2>&1; then
+        echo "Missing: docker compose." >&2
+        return 1
+      fi
+      ;;
+  esac
+}
+
+container_image_prune() {
+  load_container_engine
+  case "${CONTAINER_ENGINE}" in
+    podman) podman image prune -f "$@" ;;
+    *) docker image prune -f "$@" ;;
+  esac
+}
+
+# Host-side install choices that must survive restoring .env from a backup snapshot.
+_HOST_INSTALL_ENV_KEYS=(CONTAINER_ENGINE IMMICH_PORT HTTP_PORT PORT NEXTCLOUD_PORT COLLABORA_PORT)
+
+save_host_install_env() {
+  _HOST_INSTALL_ENV_SAVED=()
+  local k v
+  for k in "${_HOST_INSTALL_ENV_KEYS[@]}"; do
+    v="$(env_file_get "${k}" "" 2>/dev/null || true)"
+    [[ -n "${v}" ]] && _HOST_INSTALL_ENV_SAVED+=("${k}=${v}")
+  done
+}
+
+apply_host_install_env() {
+  # Re-apply saved host choices after a snapshot .env overwrite.
+  local kv k v
+  for kv in "${_HOST_INSTALL_ENV_SAVED[@]:-}"; do
+    k="${kv%%=*}"
+    v="${kv#*=}"
+    [[ -n "${k}" ]] || continue
+    env_file_set "${k}" "${v}"
+    printf -v "${k}" '%s' "${v}"
+    export "${k?}"
+  done
+  load_container_engine
+  if [[ "${#_HOST_INSTALL_ENV_SAVED[@]}" -gt 0 ]]; then
+    echo "==> Preserved host install choices: ${_HOST_INSTALL_ENV_SAVED[*]}"
+  fi
+}
+
 
 
 ensure_host_owned_dir() {
