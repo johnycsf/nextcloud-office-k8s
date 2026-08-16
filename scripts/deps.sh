@@ -769,7 +769,10 @@ save_host_install_env() {
   local k v
   for k in "${_HOST_INSTALL_ENV_KEYS[@]}"; do
     v="$(env_file_get "${k}" "" 2>/dev/null || true)"
-    [[ -n "${v}" ]] && _HOST_INSTALL_ENV_SAVED+=("${k}=${v}")
+    # Use if/fi — with set -e, a failing [[ ]] && ... aborts the script.
+    if [[ -n "${v}" ]]; then
+      _HOST_INSTALL_ENV_SAVED+=("${k}=${v}")
+    fi
   done
 }
 
