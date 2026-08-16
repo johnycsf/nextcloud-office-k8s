@@ -292,7 +292,7 @@ host_tcp_port_in_use() {
 this_compose_publishes_port() {
   local port="$1"
   command -v docker >/dev/null 2>&1 || return 1
-  docker compose ps --format '{{.Ports}}' 2>/dev/null \
+  compose ps --format '{{.Ports}}' 2>/dev/null \
     | grep -E "(^|[, ])([0-9.]+|\[::\]|\*|0\.0\.0\.0):${port}->" >/dev/null 2>&1
 }
 
@@ -614,6 +614,145 @@ _deps_install_helm_binary() {
   curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
   _deps_have helm
 }
+
+
+# --- Container engine (Docker | Podman) ---
+
+_container_engine() {
+  local eng="${CONTAINER_ENGINE:-}"
+  if [[ -z "${eng}" && -f "${ROOT:-.}/.env" ]]; then
+    eng="$(env_file_get CONTAINER_ENGINE "" "${ROOT:-.}/.env" 2>/dev/null || true)"
+  fi
+  case "${eng}" in
+    podman|Podman|PODMAN) printf '%s\n' "podman" ;;
+    *) printf '%s\n' "docker" ;;
+  esac
+}
+
+compose_engine() {
+  # Low-level compose runner for the selected engine.
+  case "$(_container_engine)" in
+    podman)
+      if podman compose version >/dev/null 2>&1; then
+        podman compose "$@"
+      elif command -v podman-compose >/dev/null 2>&1; then
+        podman-compose "$@"
+      else
+        echo "Podman Compose is required (podman compose or podman-compose)." >&2
+        return 1
+      fi
+      ;;
+    *)
+      compose "$@"
+      ;;
+  esac
+}
+
+# Default wrapper — Nextcloud overrides this in lib.sh for Redis overlays.
+compose() {
+  compose_engine "$@"
+}
+
+configure_container_engine() {
+  # Prompt once (or keep existing). Writes CONTAINER_ENGINE into .env.
+  local current choice
+  if [[ ! -f .env ]]; then
+    if [[ -f .env.example ]]; then
+      cp .env.example .env
+    else
+      touch .env
+    fi
+  fi
+  current="$(env_file_get CONTAINER_ENGINE docker)"
+  case "${current}" in
+    podman|docker) ;;
+    *) current=docker ;;
+  esac
+
+  if [[ "${SKIP_CONTAINER_ENGINE_PROMPT:-}" == "1" ]] || [[ ! -t 0 ]]; then
+    env_file_set CONTAINER_ENGINE "${current}"
+    CONTAINER_ENGINE="${current}"
+    export CONTAINER_ENGINE
+    return 0
+  fi
+
+  ui_choose choice "Container engine (currently: ${current})" \
+    "Docker (Docker Engine + Compose)" \
+    "Podman (rootless-friendly)"
+
+  case "${choice}" in
+    Podman*) CONTAINER_ENGINE=podman ;;
+    *) CONTAINER_ENGINE=docker ;;
+  esac
+
+  env_file_set CONTAINER_ENGINE "${CONTAINER_ENGINE}"
+  export CONTAINER_ENGINE
+  ui_ok "Container engine: ${CONTAINER_ENGINE}"
+  if [[ "${CONTAINER_ENGINE}" == "podman" ]]; then
+    ui_info "Podman is typically rootless — prefer host ports ≥1024 unless you configure privileges."
+  fi
+}
+
+_deps_ensure_podman() {
+  _deps_detect_os
+
+  if ! _deps_have podman; then
+    echo "Podman not found — installing..."
+    case "${DEPS_PKG}" in
+      dnf|yum)
+        _deps_pkg_install podman podman-compose || _deps_pkg_install podman || true
+        ;;
+      apt)
+        _deps_pkg_install podman podman-compose || _deps_pkg_install podman || true
+        ;;
+      pacman)
+        _deps_pkg_install podman podman-compose || _deps_pkg_install podman || true
+        ;;
+      zypper)
+        _deps_pkg_install podman podman-compose || true
+        ;;
+      apk)
+        _deps_pkg_install podman || true
+        ;;
+      brew)
+        _deps_pkg_install podman || true
+        echo "On macOS, start the Podman machine: podman machine init && podman machine start" >&2
+        ;;
+      *)
+        echo "Cannot auto-install Podman on this OS. Install podman + compose, then re-run." >&2
+        return 1
+        ;;
+    esac
+  fi
+
+  if ! _deps_have podman; then
+    echo "Podman install failed." >&2
+    return 1
+  fi
+
+  if ! podman info >/dev/null 2>&1; then
+    echo "Podman is installed but not usable yet (try: podman info)." >&2
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      echo "macOS: podman machine init && podman machine start" >&2
+    fi
+    return 1
+  fi
+
+  if ! podman compose version >/dev/null 2>&1 && ! _deps_have podman-compose; then
+    echo "Podman Compose missing — installing podman-compose..."
+    case "${DEPS_PKG}" in
+      dnf|yum|apt|pacman|zypper) _deps_pkg_install podman-compose || true ;;
+      pip|pip3) ;;
+      *) ;;
+    esac
+  fi
+
+  if ! podman compose version >/dev/null 2>&1 && ! _deps_have podman-compose; then
+    echo "podman compose / podman-compose is required but not available." >&2
+    return 1
+  fi
+}
+
 
 _deps_docker_usable() {
   docker info >/dev/null 2>&1
@@ -1112,7 +1251,13 @@ ensure_host_deps() {
 
   case "${profile}" in
     docker)
-      _deps_ensure_docker || return 1
+      # Profile name is historical; engine comes from CONTAINER_ENGINE (.env).
+      CONTAINER_ENGINE="$(_container_engine)"
+      export CONTAINER_ENGINE
+      case "${CONTAINER_ENGINE}" in
+        podman) _deps_ensure_podman || return 1 ;;
+        *) _deps_ensure_docker || return 1 ;;
+      esac
       ;;
     k8s)
       _deps_ensure_cmd kubectl || return 1
@@ -1149,7 +1294,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Interactive install with colors, steps, and progress
   ${UI_GREEN}•${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/…)
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
-  ${UI_GREEN}•${UI_RESET} Docker: host port conflict checks + optional custom ports at install
+  ${UI_GREEN}•${UI_RESET} Docker or Podman at install (`CONTAINER_ENGINE`) + host port checks
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
   ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
@@ -1180,7 +1325,7 @@ doctor_docker() {
   done
 
   ui_step "Compose services"
-  if docker compose ps 2>/dev/null; then
+  if compose ps 2>/dev/null; then
     ui_ok "compose ps OK"
   else
     ui_warn "Could not query compose status (is the stack installed?)"
@@ -1278,7 +1423,7 @@ uninstall_docker_stack() {
   confirm_destructive "uninstall" || { ui_info "Cancelled."; return 1; }
 
   if [[ -f "${ROOT}/docker-compose.yml" || -f "${ROOT}/compose.yaml" ]]; then
-    ui_run "docker compose down" docker compose down || true
+    ui_run "compose down" compose down || true
   fi
 
   local wipe
