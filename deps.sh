@@ -161,138 +161,98 @@ ui_run() {
 
 
 
-# --- Arrow-key menus (gum → whiptail → numbered fallback) ---
-
-_ui_gum_theme() {
-  # Catppuccin Mocha–aligned gum colors (matches pastel UI)
-  export GUM_CHOOSE_CURSOR_FOREGROUND="#cba6f7"
-  export GUM_CHOOSE_HEADER_FOREGROUND="#89b4fa"
-  export GUM_CHOOSE_SELECTED_FOREGROUND="#a6e3a1"
-  export GUM_CHOOSE_CURSOR="#cba6f7"
-  export GUM_CONFIRM_PROMPT_FOREGROUND="#cdd6f4"
-  export GUM_CONFIRM_SELECTED_FOREGROUND="#1e1e2e"
-  export GUM_CONFIRM_SELECTED_BACKGROUND="#a6e3a1"
-  export GUM_CONFIRM_UNSELECTED_FOREGROUND="#cdd6f4"
-  export GUM_INPUT_CURSOR_FOREGROUND="#cba6f7"
-  export GUM_INPUT_PROMPT_FOREGROUND="#89b4fa"
-  export GUM_INPUT_HEADER_FOREGROUND="#89b4fa"
-}
-
-_deps_install_gum_binary() {
-  _deps_have gum && return 0
-  _deps_ensure_cmd curl || true
-  local arch ver url tmp dest name
-  dest="${HOME}/.local/bin"
-  mkdir -p "${dest}"
-  arch="$(uname -m)"
-  case "${arch}" in
-    x86_64|amd64) arch=x86_64 ;;
-    aarch64|arm64) arch=arm64 ;;
-    *)
-      echo "Unsupported arch for gum binary: ${arch}" >&2
-      return 1
-      ;;
-  esac
-  ver="$(curl -fsSL https://api.github.com/repos/charmbracelet/gum/releases/latest 2>/dev/null \
-    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
-  [[ -n "${ver}" ]] || ver="v0.16.0"
-  name="gum_${ver#v}_Linux_${arch}.tar.gz"
-  url="https://github.com/charmbracelet/gum/releases/download/${ver}/${name}"
-  tmp="$(mktemp -d)"
-  echo "Downloading gum ${ver} (${arch})..."
-  if ! curl -fsSL "${url}" -o "${tmp}/gum.tgz"; then
-    rm -rf "${tmp}"
-    return 1
-  fi
-  tar -xzf "${tmp}/gum.tgz" -C "${tmp}"
-  install -m 0755 "${tmp}/gum" "${dest}/gum"
-  rm -rf "${tmp}"
-  export PATH="${dest}:${PATH}"
-  hash -r 2>/dev/null || true
-  _deps_have gum
-}
-
-_ui_ensure_chooser() {
-  # Prefer gum (arrow keys + Enter). Fallback: whiptail. Last resort: numbered list.
-  if _deps_have gum; then
-    return 0
-  fi
-  if [[ "${SKIP_GUM_INSTALL:-}" == "1" ]]; then
-    return 1
-  fi
-  ui_info "Installing gum for arrow-key menus..."
-  if _deps_ensure_cmd gum 2>/dev/null && _deps_have gum; then
-    ui_ok "gum ready"
-    return 0
-  fi
-  if _deps_install_gum_binary; then
-    ui_ok "gum installed to ~/.local/bin"
-    return 0
-  fi
-  # whiptail / newt as secondary
-  if ! _deps_have whiptail; then
-    _deps_ensure_cmd whiptail 2>/dev/null || true
-  fi
-  if _deps_have gum || _deps_have whiptail; then
-    return 0
-  fi
-  ui_warn "gum/whiptail not available — using numbered menu fallback"
-  return 1
-}
+# --- Native arrow-key menus ---
 
 ui_choose() {
   # ui_choose VAR "Header" "Option A" "Option B" ...
-  # Arrow keys + Enter when gum/whiptail available.
+  # Terminal: ↑/↓ (or j/k) to move, Enter to select. Cursor is ">".
+  # Digits 1–9 jump/select when they match an option index.
+  # Non-TTY: picks the first option.
   local __var="$1" __header="$2"
   shift 2
   local -a __opts=("$@")
-  local __picked="" __i __ans __menu_args=() __wt
+  local __idx=0 __n __key __key2 __key3 __i __lines __stty=""
 
   if [[ ${#__opts[@]} -lt 1 ]]; then
     echo "ui_choose: need at least one option" >&2
     return 1
   fi
+  __n=${#__opts[@]}
 
-  if [[ ! -t 0 ]]; then
+  if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
     printf -v "${__var}" '%s' "${__opts[0]}"
     return 0
   fi
 
-  _ui_ensure_chooser || true
-
-  if _deps_have gum; then
-    _ui_gum_theme
-    if __picked="$(gum choose --header "${__header}" "${__opts[@]}")"; then
-      printf -v "${__var}" '%s' "${__picked}"
-      return 0
-    fi
-    return 1
-  fi
-
-  if _deps_have whiptail; then
-    for __i in "${!__opts[@]}"; do
-      __menu_args+=("$((__i + 1))" "${__opts[$__i]}")
+  _ui_choose_render() {
+    local i
+    printf '%s%s%s\n' "${UI_BOLD}" "${__header}" "${UI_RESET}"
+    printf '%s  ↑/↓ or j/k · Enter to select%s\n' "${UI_DIM}" "${UI_RESET}"
+    for i in "${!__opts[@]}"; do
+      if ((i == __idx)); then
+        printf '  %s>%s %s%s%s\n' "${UI_GREEN}" "${UI_RESET}" "${UI_BOLD}" "${__opts[i]}" "${UI_RESET}"
+      else
+        printf '    %s\n' "${__opts[i]}"
+      fi
     done
-    __wt="$(whiptail --title "${__header}" --menu "${__header}" 20 70 10 "${__menu_args[@]}" 3>&1 1>&2 2>&3)" || return 1
-    printf -v "${__var}" '%s' "${__opts[$((__wt - 1))]}"
-    return 0
-  fi
+  }
 
-  # Numbered fallback
+  __lines=$((2 + __n))
+  __stty="$(stty -g 2>/dev/null || true)"
+  tput civis 2>/dev/null || true
+  stty -echo -icanon time 0 min 1 2>/dev/null || stty -echo -icanon 2>/dev/null || true
+
+  _ui_choose_restore() {
+    [[ -n "${__stty}" ]] && stty "${__stty}" 2>/dev/null || true
+    tput cnorm 2>/dev/null || true
+  }
+
   echo
-  echo "${UI_BOLD}${__header}${UI_RESET}"
-  for __i in "${!__opts[@]}"; do
-    echo "  $((__i + 1))) ${__opts[$__i]}"
-  done
-  echo
+  _ui_choose_render
   while true; do
-    ui_ask __ans "Choose" "1"
-    if [[ "${__ans}" =~ ^[0-9]+$ ]] && (( __ans >= 1 && __ans <= ${#__opts[@]} )); then
-      printf -v "${__var}" '%s' "${__opts[$((__ans - 1))]}"
-      return 0
-    fi
-    ui_warn "Enter a number between 1 and ${#__opts[@]}"
+    IFS= read -r -n 1 __key || true
+    case "${__key}" in
+      "") # Enter (newline often read as empty with -n 1)
+        break
+        ;;
+      $'\n' | $'\r')
+        break
+        ;;
+      $'\x1b')
+        __key2="" __key3=""
+        IFS= read -r -n 1 -t 0.05 __key2 || true
+        IFS= read -r -n 1 -t 0.05 __key3 || true
+        case "${__key2}${__key3}" in
+          "[A" | "OA") ((__idx > 0)) && ((__idx--)) || true ;;
+          "[B" | "OB") ((__idx < __n - 1)) && ((__idx++)) || true ;;
+        esac
+        ;;
+      k | K)
+        ((__idx > 0)) && ((__idx--)) || true
+        ;;
+      j | J)
+        ((__idx < __n - 1)) && ((__idx++)) || true
+        ;;
+      q | Q)
+        _ui_choose_restore
+        echo
+        return 1
+        ;;
+      [1-9])
+        if ((__key >= 1 && __key <= __n)); then
+          __idx=$((__key - 1))
+          break
+        fi
+        ;;
+    esac
+    printf '\033[%dA' "${__lines}"
+    _ui_choose_render
   done
+
+  _ui_choose_restore
+  printf -v "${__var}" '%s' "${__opts[__idx]}"
+  printf '\n  %s>%s %s\n' "${UI_GREEN}" "${UI_RESET}" "${__opts[__idx]}"
+  return 0
 }
 
 # --- Host port selection / conflict checks (docker publishes) ---
@@ -522,23 +482,14 @@ _deps_packages_for_cmd() {
     age)
       echo age
       ;;
-    gum)
-      case "${DEPS_PKG}" in
-        brew) echo gum ;;
-        # Often missing from default repos — binary fallback handles it
-        *) echo gum ;;
-      esac
+    zip)
+      echo zip
       ;;
-    whiptail)
-      case "${DEPS_PKG}" in
-        dnf|yum) echo newt ;;
-        apt) echo whiptail ;;
-        pacman) echo newt ;;
-        zypper) echo newt ;;
-        apk) echo newt ;;
-        brew) echo newt ;;
-        *) echo whiptail ;;
-      esac
+    unzip)
+      echo unzip
+      ;;
+    xz)
+      echo xz
       ;;
     tar)
       case "${DEPS_PKG}" in
@@ -609,8 +560,6 @@ _deps_ensure_cmd() {
       _deps_install_kubectl_binary || return 1
     elif [[ "${cmd}" == "helm" ]]; then
       _deps_install_helm_binary || return 1
-    elif [[ "${cmd}" == "gum" ]]; then
-      _deps_install_gum_binary || return 1
     else
       return 1
     fi
@@ -620,8 +569,6 @@ _deps_ensure_cmd() {
       _deps_install_kubectl_binary || return 1
     elif [[ "${cmd}" == "helm" ]]; then
       _deps_install_helm_binary || return 1
-    elif [[ "${cmd}" == "gum" ]]; then
-      _deps_install_gum_binary || return 1
     else
       echo "Installed packages for ${cmd}, but command still not on PATH." >&2
       return 1
@@ -1204,7 +1151,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
   ${UI_GREEN}•${UI_RESET} Docker: host port conflict checks + optional custom ports at install
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
-  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore; optional age-encrypted offsite exports (`./backup.sh --encrypt`)
+  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore; optional compressed/encrypted offsite exports (`./backup.sh --archive` / `--encrypt`)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
   ${UI_GREEN}•${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
 EOF
@@ -1373,11 +1320,11 @@ uninstall_k8s_stack() {
 }
 
 manage_menu_docker() {
-  local title="$1" choice dest encrypt_choice export_dir
+  local title="$1" choice dest export_dir
   ui_banner "${title}" "Control center · Docker"
   print_homelab_features
   echo
-  ui_choose choice "What do you want to do?  (↑↓ arrows, Enter to select)" \
+  ui_choose choice "What do you want to do?" \
     "Install / reconfigure" \
     "Update" \
     "Backup" \
@@ -1388,16 +1335,59 @@ manage_menu_docker() {
     "Install / reconfigure") exec "${ROOT}/install.sh" ;;
     "Update") exec "${ROOT}/update.sh" ;;
     "Backup")
+      local archive_choice protect_choice
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      ui_choose encrypt_choice "Encrypt an offsite copy with age?" \
-        "No — local snapshot only" \
-        "Yes — also create age-encrypted export"
-      if [[ "${encrypt_choice}" == Yes* ]]; then
-        ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
-        exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
-      else
-        exec "${ROOT}/backup.sh" --dest "${dest}"
-      fi
+      ui_choose archive_choice "Offsite export after local snapshot?" \
+        "No — local hardlink snapshot only" \
+        "tar.gz (gzip)" \
+        "tar.xz (xz, smaller/slower)" \
+        "zip" \
+        "age-encrypted tar (strong crypto)"
+      case "${archive_choice}" in
+        No*)
+          exec "${ROOT}/backup.sh" --dest "${dest}"
+          ;;
+        tar.gz*)
+          ui_choose protect_choice "Password-protect the archive?" \
+            "No — plain tar.gz" \
+            "Yes — age passphrase (strong)"
+          ui_ask export_dir "Export directory" "${dest}/exports"
+          if [[ "${protect_choice}" == Yes* ]]; then
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --archive-password --export-dir "${export_dir}"
+          else
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --export-dir "${export_dir}"
+          fi
+          ;;
+        tar.xz*)
+          ui_choose protect_choice "Password-protect the archive?" \
+            "No — plain tar.xz" \
+            "Yes — age passphrase (strong)"
+          ui_ask export_dir "Export directory" "${dest}/exports"
+          if [[ "${protect_choice}" == Yes* ]]; then
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --archive-password --export-dir "${export_dir}"
+          else
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --export-dir "${export_dir}"
+          fi
+          ;;
+        zip)
+          ui_choose protect_choice "Password-protect the zip?" \
+            "No — plain zip" \
+            "Yes — zip password (ZipCrypto; casual)"
+          ui_ask export_dir "Export directory" "${dest}/exports"
+          if [[ "${protect_choice}" == Yes* ]]; then
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --archive-password --export-dir "${export_dir}"
+          else
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --export-dir "${export_dir}"
+          fi
+          ;;
+        age-encrypted*)
+          ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
+          exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
+          ;;
+        *)
+          ui_info "Cancelled."
+          ;;
+      esac
       ;;
     "Status / doctor") doctor_docker "${title}" ;;
     "Uninstall") uninstall_docker_stack "${title}" ;;
@@ -1407,11 +1397,11 @@ manage_menu_docker() {
 
 
 manage_menu_k8s() {
-  local title="$1" ns="$2" choice dest encrypt_choice export_dir
+  local title="$1" ns="$2" choice dest export_dir
   ui_banner "${title}" "Control center · Kubernetes"
   print_homelab_features
   echo
-  ui_choose choice "What do you want to do?  (↑↓ arrows, Enter to select)" \
+  ui_choose choice "What do you want to do?" \
     "Install / reconfigure (storage + replicas)" \
     "Update" \
     "Backup" \
@@ -1422,16 +1412,59 @@ manage_menu_k8s() {
     "Install / reconfigure (storage + replicas)") exec "${ROOT}/install.sh" ;;
     "Update") exec "${ROOT}/update.sh" ;;
     "Backup")
+      local archive_choice protect_choice
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      ui_choose encrypt_choice "Encrypt an offsite copy with age?" \
-        "No — local snapshot only" \
-        "Yes — also create age-encrypted export"
-      if [[ "${encrypt_choice}" == Yes* ]]; then
-        ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
-        exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
-      else
-        exec "${ROOT}/backup.sh" --dest "${dest}"
-      fi
+      ui_choose archive_choice "Offsite export after local snapshot?" \
+        "No — local hardlink snapshot only" \
+        "tar.gz (gzip)" \
+        "tar.xz (xz, smaller/slower)" \
+        "zip" \
+        "age-encrypted tar (strong crypto)"
+      case "${archive_choice}" in
+        No*)
+          exec "${ROOT}/backup.sh" --dest "${dest}"
+          ;;
+        tar.gz*)
+          ui_choose protect_choice "Password-protect the archive?" \
+            "No — plain tar.gz" \
+            "Yes — age passphrase (strong)"
+          ui_ask export_dir "Export directory" "${dest}/exports"
+          if [[ "${protect_choice}" == Yes* ]]; then
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --archive-password --export-dir "${export_dir}"
+          else
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --export-dir "${export_dir}"
+          fi
+          ;;
+        tar.xz*)
+          ui_choose protect_choice "Password-protect the archive?" \
+            "No — plain tar.xz" \
+            "Yes — age passphrase (strong)"
+          ui_ask export_dir "Export directory" "${dest}/exports"
+          if [[ "${protect_choice}" == Yes* ]]; then
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --archive-password --export-dir "${export_dir}"
+          else
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --export-dir "${export_dir}"
+          fi
+          ;;
+        zip)
+          ui_choose protect_choice "Password-protect the zip?" \
+            "No — plain zip" \
+            "Yes — zip password (ZipCrypto; casual)"
+          ui_ask export_dir "Export directory" "${dest}/exports"
+          if [[ "${protect_choice}" == Yes* ]]; then
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --archive-password --export-dir "${export_dir}"
+          else
+            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --export-dir "${export_dir}"
+          fi
+          ;;
+        age-encrypted*)
+          ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
+          exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
+          ;;
+        *)
+          ui_info "Cancelled."
+          ;;
+      esac
       ;;
     "Status / doctor") doctor_k8s "${title}" "${ns}" ;;
     "Uninstall") uninstall_k8s_stack "${title}" "${ns}" ;;
