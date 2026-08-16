@@ -1554,7 +1554,7 @@ doctor_docker() {
     ui_ok "Local snapshots: ${n}"
     ls -1dt "${ROOT}/backups/snapshots"/* 2>/dev/null | head -3 | sed 's/^/  /' || true
   else
-    ui_info "No local backups/ yet — use ./manage.sh backup --dest /path"
+    ui_info "No local backups/ yet — use ./manage.sh backup --dest /mnt/backup (creates /mnt/backup/<stack>/)"
   fi
 
   if [[ -f "${ROOT}/.env" ]]; then
@@ -1670,6 +1670,50 @@ uninstall_k8s_stack() {
   ui_ok "Uninstall finished"
 }
 
+
+default_backup_dest() {
+  # Prefer shared backup disk when mounted; stack id is appended later.
+  if [[ -d /mnt/backup && -w /mnt/backup ]]; then
+    printf '%s\n' "/mnt/backup"
+  else
+    printf '%s\n' "${ROOT}/backups"
+  fi
+}
+
+resolve_stack_backup_dest() {
+  # resolve_stack_backup_dest STACK_ID USER_PATH
+  # Always use .../STACK_ID so multiple apps can share one --dest root tidy.
+  local stack_id="$1" dest="$2"
+  [[ -n "${stack_id}" && -n "${dest}" ]] || return 1
+  dest="${dest%/}"
+  if [[ "$(basename "${dest}")" == "${stack_id}" ]]; then
+    printf '%s\n' "${dest}"
+    return 0
+  fi
+  printf '%s\n' "${dest}/${stack_id}"
+}
+
+resolve_stack_backup_from() {
+  # resolve_stack_backup_from STACK_ID USER_PATH
+  # Accept parent root (/mnt/backup) or stack root (/mnt/backup/STACK_ID) or snapshot.
+  local stack_id="$1" path="$2" nested
+  [[ -n "${path}" ]] || return 1
+  path="${path%/}"
+  if [[ -e "${path}" ]]; then
+    # Already a snapshot / stack backup root / archive
+    if [[ -f "${path}/META.txt" || -L "${path}/latest" || -d "${path}/snapshots" || -f "${path}" ]]; then
+      printf '%s\n' "${path}"
+      return 0
+    fi
+  fi
+  nested="${path}/${stack_id}"
+  if [[ -d "${nested}" ]]; then
+    printf '%s\n' "${nested}"
+    return 0
+  fi
+  printf '%s\n' "${path}"
+}
+
 manage_menu_docker() {
   local title="$1" choice dest from
   load_container_engine
@@ -1688,11 +1732,11 @@ manage_menu_docker() {
     "Install / reconfigure") exec "${ROOT}/scripts/install.sh" ;;
     "Update") exec "${ROOT}/scripts/update.sh" ;;
     "Backup")
-      ui_ask dest "Backup destination directory" "${ROOT}/backups"
+      ui_ask dest "Backup destination (stack folder created under this path)" "$(default_backup_dest)"
       exec "${ROOT}/scripts/backup.sh" --dest "${dest}"
       ;;
     "Restore")
-      ui_ask from "Restore from (backup root, snapshot dir, or archive file)" "${ROOT}/backups"
+      ui_ask from "Restore from (backup root, stack folder, snapshot, or archive)" "$(default_backup_dest)"
       exec "${ROOT}/scripts/backup.sh" --restore --from "${from}"
       ;;
     "Status / doctor") doctor_docker "${title}" ;;
@@ -1719,11 +1763,11 @@ manage_menu_k8s() {
     "Install / reconfigure (storage + replicas)") exec "${ROOT}/scripts/install.sh" ;;
     "Update") exec "${ROOT}/scripts/update.sh" ;;
     "Backup")
-      ui_ask dest "Backup destination directory" "${ROOT}/backups"
+      ui_ask dest "Backup destination (stack folder created under this path)" "$(default_backup_dest)"
       exec "${ROOT}/scripts/backup.sh" --dest "${dest}"
       ;;
     "Restore")
-      ui_ask from "Restore from (backup root, snapshot dir, or archive file)" "${ROOT}/backups"
+      ui_ask from "Restore from (backup root, stack folder, snapshot, or archive)" "$(default_backup_dest)"
       exec "${ROOT}/scripts/backup.sh" --restore --from "${from}"
       ;;
     "Status / doctor") doctor_k8s "${title}" "${ns}" ;;
