@@ -35,15 +35,21 @@ Disaster-recovery backups (also used by ./update.sh for pre-update snapshots int
   --restore     Restore into this deployment from --from.
   --from PATH   Backup root (uses latest/) or a specific snapshots/TIMESTAMP dir.
 
-  --encrypt          After snapshot, also write an age-encrypted .tar.age export
-                     (local hardlink snapshot stays plaintext for incrementals).
-  --export-dir DIR   Where to put *.tar.age (default: DEST/encrypted).
+  --archive FMT      After snapshot, also write a compressed export (tar.gz|tar.xz|zip).
+                     Local hardlink snapshots stay uncompressed for --link-dest.
+  --archive-password Password-protect that archive:
+                       zip   → zip -e (ZipCrypto; casual protection)
+                       tar.* → compress then age -p (strong passphrase)
+  --encrypt          Advanced: age-encrypted .tar.age export (recipient key).
+  --export-dir DIR   Where to put exports (default: DEST/exports for --archive,
+                     DEST/encrypted for --encrypt).
   --age-recipient R  age1… public key or path to recipients file (repeatable).
   --age-identity F   Private key file for decrypt (default: ~/.config/johnycsf/backup.age.key).
-  --passphrase       Encrypt export with a passphrase (age -p) instead of a recipient key.
+  --passphrase       With --encrypt: age -p instead of a recipient key.
 
-  SHA256SUMS = integrity. age = confidentiality for offsite/USB/NAS copies.
-  Restore: --from may be a snapshot dir/root OR a *.tar.age / *.age export.
+  SHA256SUMS = integrity. Archives/age = smaller or confidential offsite copies.
+  Restore: --from may be a snapshot dir/root OR *.tar.gz / *.tar.xz / *.zip /
+  *.tar.gz.age / *.tar.xz.age / *.tar.age / *.age.
 
 Fresh-machine workflow:
   1) Install this stack on the new host (./install.sh) so runtime exists.
@@ -65,6 +71,8 @@ KEEP=""
 ENCRYPT="${BACKUP_ENCRYPT:-0}"
 EXPORT_DIR="${BACKUP_EXPORT_DIR:-}"
 ENCRYPT_PASSPHRASE=0
+ARCHIVE_FORMAT="${BACKUP_ARCHIVE:-}"
+ARCHIVE_PASSWORD="${BACKUP_ARCHIVE_PASSWORD:-0}"
 AGE_RECIPIENTS=()
 AGE_IDENTITY="${BACKUP_AGE_IDENTITY:-}"
 
@@ -78,6 +86,11 @@ while [[ $# -gt 0 ]]; do
       FROM="$2"; shift 2 ;;
     --restore)
       MODE="restore"; shift ;;
+    --archive)
+      [[ $# -ge 2 ]] || { echo "--archive needs tar.gz|tar.xz|zip" >&2; exit 1; }
+      ARCHIVE_FORMAT="$2"; shift 2 ;;
+    --archive-password)
+      ARCHIVE_PASSWORD=1; shift ;;
     --encrypt)
       ENCRYPT=1; shift ;;
     --export-dir)

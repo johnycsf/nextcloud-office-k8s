@@ -1151,7 +1151,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
   ${UI_GREEN}•${UI_RESET} Docker: host port conflict checks + optional custom ports at install
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
-  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore; optional compressed/encrypted offsite exports (`./backup.sh --archive` / `--encrypt`)
+  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./backup.sh)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
   ${UI_GREEN}•${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
 EOF
@@ -1320,7 +1320,7 @@ uninstall_k8s_stack() {
 }
 
 manage_menu_docker() {
-  local title="$1" choice dest export_dir
+  local title="$1" choice dest
   ui_banner "${title}" "Control center · Docker"
   print_homelab_features
   echo
@@ -1335,59 +1335,8 @@ manage_menu_docker() {
     "Install / reconfigure") exec "${ROOT}/install.sh" ;;
     "Update") exec "${ROOT}/update.sh" ;;
     "Backup")
-      local archive_choice protect_choice
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      ui_choose archive_choice "Offsite export after local snapshot?" \
-        "No — local hardlink snapshot only" \
-        "tar.gz (gzip)" \
-        "tar.xz (xz, smaller/slower)" \
-        "zip" \
-        "age-encrypted tar (strong crypto)"
-      case "${archive_choice}" in
-        No*)
-          exec "${ROOT}/backup.sh" --dest "${dest}"
-          ;;
-        tar.gz*)
-          ui_choose protect_choice "Password-protect the archive?" \
-            "No — plain tar.gz" \
-            "Yes — age passphrase (strong)"
-          ui_ask export_dir "Export directory" "${dest}/exports"
-          if [[ "${protect_choice}" == Yes* ]]; then
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --archive-password --export-dir "${export_dir}"
-          else
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --export-dir "${export_dir}"
-          fi
-          ;;
-        tar.xz*)
-          ui_choose protect_choice "Password-protect the archive?" \
-            "No — plain tar.xz" \
-            "Yes — age passphrase (strong)"
-          ui_ask export_dir "Export directory" "${dest}/exports"
-          if [[ "${protect_choice}" == Yes* ]]; then
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --archive-password --export-dir "${export_dir}"
-          else
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --export-dir "${export_dir}"
-          fi
-          ;;
-        zip)
-          ui_choose protect_choice "Password-protect the zip?" \
-            "No — plain zip" \
-            "Yes — zip password (ZipCrypto; casual)"
-          ui_ask export_dir "Export directory" "${dest}/exports"
-          if [[ "${protect_choice}" == Yes* ]]; then
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --archive-password --export-dir "${export_dir}"
-          else
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --export-dir "${export_dir}"
-          fi
-          ;;
-        age-encrypted*)
-          ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
-          exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
-          ;;
-        *)
-          ui_info "Cancelled."
-          ;;
-      esac
+      exec "${ROOT}/backup.sh" --dest "${dest}"
       ;;
     "Status / doctor") doctor_docker "${title}" ;;
     "Uninstall") uninstall_docker_stack "${title}" ;;
@@ -1397,7 +1346,7 @@ manage_menu_docker() {
 
 
 manage_menu_k8s() {
-  local title="$1" ns="$2" choice dest export_dir
+  local title="$1" ns="$2" choice dest
   ui_banner "${title}" "Control center · Kubernetes"
   print_homelab_features
   echo
@@ -1412,59 +1361,8 @@ manage_menu_k8s() {
     "Install / reconfigure (storage + replicas)") exec "${ROOT}/install.sh" ;;
     "Update") exec "${ROOT}/update.sh" ;;
     "Backup")
-      local archive_choice protect_choice
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      ui_choose archive_choice "Offsite export after local snapshot?" \
-        "No — local hardlink snapshot only" \
-        "tar.gz (gzip)" \
-        "tar.xz (xz, smaller/slower)" \
-        "zip" \
-        "age-encrypted tar (strong crypto)"
-      case "${archive_choice}" in
-        No*)
-          exec "${ROOT}/backup.sh" --dest "${dest}"
-          ;;
-        tar.gz*)
-          ui_choose protect_choice "Password-protect the archive?" \
-            "No — plain tar.gz" \
-            "Yes — age passphrase (strong)"
-          ui_ask export_dir "Export directory" "${dest}/exports"
-          if [[ "${protect_choice}" == Yes* ]]; then
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --archive-password --export-dir "${export_dir}"
-          else
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.gz --export-dir "${export_dir}"
-          fi
-          ;;
-        tar.xz*)
-          ui_choose protect_choice "Password-protect the archive?" \
-            "No — plain tar.xz" \
-            "Yes — age passphrase (strong)"
-          ui_ask export_dir "Export directory" "${dest}/exports"
-          if [[ "${protect_choice}" == Yes* ]]; then
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --archive-password --export-dir "${export_dir}"
-          else
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive tar.xz --export-dir "${export_dir}"
-          fi
-          ;;
-        zip)
-          ui_choose protect_choice "Password-protect the zip?" \
-            "No — plain zip" \
-            "Yes — zip password (ZipCrypto; casual)"
-          ui_ask export_dir "Export directory" "${dest}/exports"
-          if [[ "${protect_choice}" == Yes* ]]; then
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --archive-password --export-dir "${export_dir}"
-          else
-            exec "${ROOT}/backup.sh" --dest "${dest}" --archive zip --export-dir "${export_dir}"
-          fi
-          ;;
-        age-encrypted*)
-          ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
-          exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
-          ;;
-        *)
-          ui_info "Cancelled."
-          ;;
-      esac
+      exec "${ROOT}/backup.sh" --dest "${dest}"
       ;;
     "Status / doctor") doctor_k8s "${title}" "${ns}" ;;
     "Uninstall") uninstall_k8s_stack "${title}" "${ns}" ;;
