@@ -72,25 +72,8 @@ nc_fetch() {
 }
 
 require_longhorn() {
-  if ! kubectl get storageclass longhorn >/dev/null 2>&1; then
-    cat <<'EOF' >&2
-Longhorn storage class not found.
-
-Install Longhorn first (one-time, shared by these homelab apps):
-
-  helm repo add longhorn https://charts.longhorn.io
-  helm repo update
-  helm install longhorn longhorn/longhorn \
-    --namespace longhorn-system --create-namespace
-
-Wait until pods are ready:
-
-  kubectl -n longhorn-system get pod
-
-Then re-run this script.
-EOF
-    exit 1
-  fi
+  # Back-compat alias — storage is chosen at install time (.storage-class).
+  require_storage_class
 }
 
 gen_password() {
@@ -163,7 +146,11 @@ apply_optional_redis() {
   fi
 
   echo "Applying optional Redis manifests..."
-  kubectl apply -f "${ROOT}/deploy-redis.yaml"
+  if declare -F apply_manifest >/dev/null 2>&1; then
+    apply_manifest "${ROOT}/deploy-redis.yaml"
+  else
+    kubectl apply -f "${ROOT}/deploy-redis.yaml"
+  fi
   kubectl -n "$NS" rollout status deployment/redis --timeout=180s
   kubectl -n "$NS" set env deployment/nextcloud REDIS_HOST=redis
   echo "Redis enabled (REDIS_HOST=redis on Nextcloud)."

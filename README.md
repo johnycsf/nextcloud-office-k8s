@@ -52,9 +52,10 @@ References:
 
 - A Kubernetes cluster (`kubectl` context already set)
 - `sudo` on this machine so `./install.sh` can install missing tools (kubectl, helm, curl, openssl, rsync, …)
-- Disk for PersistentVolumes (Longhorn is installed automatically if the `longhorn` StorageClass is missing)
+- Disk for PersistentVolumes
 
-`./install.sh` detects your OS and installs host dependencies automatically.
+`./install.sh` detects your OS, installs host dependencies, and **asks which StorageClass to use** (Longhorn, cluster default, local-path, or any class already in the cluster). Longhorn can be installed for you if you pick it. Non-interactive: `STORAGE_CLASS=longhorn ./install.sh`.
+
 
 ## One-time: install Longhorn
 

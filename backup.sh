@@ -3,6 +3,8 @@
 # Restores HTML + MariaDB and runs occ repair/scan on a fresh cluster.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deps.sh
+source "${ROOT}/deps.sh"
 # shellcheck source=lib.sh
 source "${ROOT}/lib.sh"
 cd "$ROOT"
@@ -542,7 +544,7 @@ EOF
 
   if ! kubectl -n "$NS" get deploy nextcloud >/dev/null 2>&1; then
     echo "==> Applying manifests..."
-    kubectl apply -f "${ROOT}/deploy.yaml"
+    apply_manifest "${ROOT}/deploy.yaml"
   fi
   if [[ -f "${snap}/secret-nextcloud-db.yaml" ]]; then
     echo "==> Restoring DB secret..."

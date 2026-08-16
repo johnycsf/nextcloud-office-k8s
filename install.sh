@@ -16,7 +16,7 @@ if [[ "${SHOW_HELP}" -eq 1 ]]; then
 fi
 
 ensure_host_deps k8s
-ensure_longhorn_storage
+configure_k8s_storage
 
 refuse_legacy_nextcloud_cluster
 
@@ -31,7 +31,7 @@ EOF
 ensure_db_secret
 
 echo "Applying Nextcloud + MariaDB + Collabora manifests..."
-kubectl apply -f "${ROOT}/deploy.yaml"
+apply_manifest "${ROOT}/deploy.yaml"
 
 echo "Waiting for MariaDB to become ready..."
 kubectl -n nextcloud rollout status deployment/db --timeout=300s

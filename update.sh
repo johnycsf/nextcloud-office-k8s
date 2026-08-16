@@ -3,6 +3,8 @@
 # Creates a local rollback backup first, then asks whether to keep it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deps.sh
+source "${ROOT}/deps.sh"
 # shellcheck source=lib.sh
 source "${ROOT}/lib.sh"
 cd "$ROOT"
@@ -135,7 +137,7 @@ create_backup() {
 
 
 need kubectl
-require_longhorn
+require_storage_class
 
 if ! kubectl -n "$NS" get deploy nextcloud >/dev/null 2>&1; then
   echo "Nextcloud is not installed yet. Run ./install.sh first." >&2
@@ -146,11 +148,11 @@ refuse_legacy_nextcloud_cluster
 create_backup
 
 echo "==> Applying core manifests..."
-kubectl apply -f "${ROOT}/deploy.yaml"
+apply_manifest "${ROOT}/deploy.yaml"
 
 if redis_deployed; then
   echo "==> Redis is present — re-applying deploy-redis.yaml..."
-  kubectl apply -f "${ROOT}/deploy-redis.yaml"
+  apply_manifest "${ROOT}/deploy-redis.yaml"
 fi
 
 echo "==> Rolling out Deployments (picks up newer :latest digests)..."

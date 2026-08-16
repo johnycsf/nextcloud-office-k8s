@@ -353,8 +353,38 @@ _deps_ensure_container_builder() {
   _deps_ensure_docker
 }
 
+# --- Kubernetes storage selection (PVC StorageClass) ---
+# Install prompts (or STORAGE_CLASS=name for non-interactive). Choice saved to .storage-class.
+
+storage_class_file() {
+  echo "${ROOT:-.}/.storage-class"
+}
+
+save_storage_class() {
+  local sc="$1"
+  printf '%s\n' "${sc}" >"$(storage_class_file)"
+  echo "Saved storage choice: ${sc} ($(storage_class_file))"
+}
+
+load_storage_class() {
+  local f sc
+  f="$(storage_class_file)"
+  if [[ -f "${f}" ]]; then
+    sc="$(tr -d '[:space:]' <"${f}")"
+    [[ -n "${sc}" ]] && { printf '%s' "${sc}"; return 0; }
+  fi
+  return 1
+}
+
+cluster_default_storage_class() {
+  kubectl get storageclass -o jsonpath='{range .items[?(@.metadata.annotations.storageclass\.kubernetes\.io/is-default-class=="true")]}{.metadata.name}{"\n"}{end}' 2>/dev/null | head -1
+}
+
+list_storage_classes() {
+  kubectl get storageclass -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true
+}
+
 ensure_longhorn_storage() {
-  # Optional helper for k8s install.sh — installs Longhorn when StorageClass missing.
   if kubectl get storageclass longhorn >/dev/null 2>&1; then
     return 0
   fi
@@ -376,6 +406,167 @@ ensure_longhorn_storage() {
   echo "Longhorn install did not expose StorageClass 'longhorn' in time." >&2
   echo "Check: kubectl -n longhorn-system get pod" >&2
   return 1
+}
+
+ensure_storage_class_ready() {
+  local sc="$1"
+  case "${sc}" in
+    longhorn)
+      ensure_longhorn_storage || return 1
+      ;;
+    *)
+      if ! kubectl get storageclass "${sc}" >/dev/null 2>&1; then
+        echo "StorageClass '${sc}' was not found in this cluster." >&2
+        echo "Create it first, or re-run and pick Longhorn / another available class." >&2
+        echo "Existing classes:" >&2
+        list_storage_classes | sed 's/^/  - /' >&2 || true
+        return 1
+      fi
+      ;;
+  esac
+  return 0
+}
+
+# Interactive (or STORAGE_CLASS=) picker. Sets CHOSEN_STORAGE_CLASS and saves .storage-class.
+choose_storage_class() {
+  local sc="" default_sc choice custom
+  local -a existing=()
+
+  if [[ -n "${STORAGE_CLASS:-}" ]]; then
+    sc="${STORAGE_CLASS}"
+    echo "Using StorageClass from STORAGE_CLASS=${sc}"
+    ensure_storage_class_ready "${sc}" || return 1
+    CHOSEN_STORAGE_CLASS="${sc}"
+    save_storage_class "${sc}"
+    return 0
+  fi
+
+  default_sc="$(cluster_default_storage_class || true)"
+  existing=()
+  while IFS= read -r _sc_line; do
+    [[ -n "${_sc_line}" ]] && existing+=("${_sc_line}")
+  done < <(list_storage_classes)
+
+  if [[ ! -t 0 ]]; then
+    sc="longhorn"
+    echo "No TTY and STORAGE_CLASS unset — defaulting to Longhorn."
+    ensure_storage_class_ready "${sc}" || return 1
+    CHOSEN_STORAGE_CLASS="${sc}"
+    save_storage_class "${sc}"
+    return 0
+  fi
+
+  echo
+  echo "Which Kubernetes storage should PersistentVolumeClaims use?"
+  echo "  (You can also set STORAGE_CLASS=name for a non-interactive install.)"
+  echo
+  echo "  1) Longhorn          — replicated block storage (recommended; can auto-install)"
+  if [[ -n "${default_sc}" ]]; then
+    echo "  2) Cluster default   — currently: ${default_sc}"
+  else
+    echo "  2) Cluster default   — (no default StorageClass annotated on this cluster)"
+  fi
+  echo "  3) local-path        — typical for k3s single-node"
+  echo "  4) Pick from classes already installed on this cluster"
+  echo "  5) Type a custom StorageClass name"
+  echo
+  if ((${#existing[@]})); then
+    echo "StorageClasses currently in the cluster:"
+    local name
+    for name in "${existing[@]}"; do
+      if [[ "${name}" == "${default_sc}" ]]; then
+        echo "  - ${name} (default)"
+      else
+        echo "  - ${name}"
+      fi
+    done
+    echo
+  else
+    echo "No StorageClasses found yet (Longhorn install can create one)."
+    echo
+  fi
+
+  read -r -p "Choice [1]: " choice
+  choice="${choice:-1}"
+
+  case "${choice}" in
+    1)
+      sc="longhorn"
+      ;;
+    2)
+      if [[ -z "${default_sc}" ]]; then
+        echo "No default StorageClass — pick another option or install a provisioner." >&2
+        return 1
+      fi
+      sc="${default_sc}"
+      ;;
+    3)
+      sc="local-path"
+      ;;
+    4)
+      if ((${#existing[@]} == 0)); then
+        echo "No StorageClasses to pick from." >&2
+        return 1
+      fi
+      echo "Enter the exact StorageClass name from the list above:"
+      read -r -p "StorageClass: " sc
+      sc="$(printf '%s' "${sc}" | tr -d '[:space:]')"
+      ;;
+    5)
+      read -r -p "Custom StorageClass name: " custom
+      sc="$(printf '%s' "${custom}" | tr -d '[:space:]')"
+      ;;
+    *)
+      echo "Invalid choice: ${choice}" >&2
+      return 1
+      ;;
+  esac
+
+  if [[ -z "${sc}" ]]; then
+    echo "StorageClass name cannot be empty." >&2
+    return 1
+  fi
+
+  ensure_storage_class_ready "${sc}" || return 1
+  CHOSEN_STORAGE_CLASS="${sc}"
+  save_storage_class "${sc}"
+}
+
+# Install entrypoint: prompt + ensure provisioner if needed.
+configure_k8s_storage() {
+  choose_storage_class || return 1
+  echo "PVCs will use StorageClass: ${CHOSEN_STORAGE_CLASS}"
+}
+
+# Update/backup entrypoint: reuse saved choice (or STORAGE_CLASS / prompt once).
+require_storage_class() {
+  local sc=""
+  if [[ -n "${STORAGE_CLASS:-}" ]]; then
+    sc="${STORAGE_CLASS}"
+    save_storage_class "${sc}"
+  elif sc="$(load_storage_class)"; then
+    echo "Using saved StorageClass: ${sc}"
+  else
+    echo "No saved storage choice (.storage-class) — asking now..."
+    choose_storage_class || return 1
+    sc="${CHOSEN_STORAGE_CLASS}"
+  fi
+  ensure_storage_class_ready "${sc}" || return 1
+  CHOSEN_STORAGE_CLASS="${sc}"
+}
+
+# Apply a manifest file with storageClassName rewritten to the chosen class.
+apply_manifest() {
+  local file="$1"
+  local sc="${CHOSEN_STORAGE_CLASS:-}"
+  [[ -n "${sc}" ]] || sc="$(load_storage_class || true)"
+  [[ -n "${sc}" ]] || sc="${STORAGE_CLASS:-longhorn}"
+  if [[ ! -f "${file}" ]]; then
+    echo "Manifest not found: ${file}" >&2
+    return 1
+  fi
+  # Only rewrite storageClassName lines (PVC templates in this repo).
+  sed -E "s/^([[:space:]]*storageClassName:[[:space:]]*).*/\\1${sc}/" "${file}" | kubectl apply -f -
 }
 
 # ensure_host_deps <profile> [extra commands...]
