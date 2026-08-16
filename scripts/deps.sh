@@ -1448,7 +1448,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Interactive install with colors, steps, and progress
   ${UI_GREEN}•${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/…)
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
-  ${UI_GREEN}•${UI_RESET} Docker or Podman at install (`CONTAINER_ENGINE`) + host port checks
+  ${UI_GREEN}•${UI_RESET} Docker or Podman at install (CONTAINER_ENGINE in .env) + host port checks
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
   ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
@@ -1622,7 +1622,8 @@ uninstall_k8s_stack() {
 
 manage_menu_docker() {
   local title="$1" choice dest from
-  ui_banner "${title}" "Control center · Docker"
+  load_container_engine
+  ui_banner "${title}" "Control center · $(container_engine_label)"
   print_homelab_features
   echo
   ui_choose choice "What do you want to do?" \

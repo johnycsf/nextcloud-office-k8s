@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/) where tagged releases exist.
 
 ## [Unreleased]
+- Fix features blurb: backticks around CONTAINER_ENGINE ran it as a shell command.
+- Control-center banner uses remembered Docker/Podman engine label.
 - UI polish: install/doctor/uninstall banners reflect Docker vs Podman from `CONTAINER_ENGINE`.
 - Remember `CONTAINER_ENGINE` from `.env` for all manage actions; preserve it (and host ports) across restore; stop hard-requiring `docker` when Podman is selected.
 - Podman: prefer `podman-compose` over `podman compose`/docker-compose plugin; silence provider banner.
