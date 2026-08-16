@@ -45,7 +45,6 @@ body:
     attributes:
       label: How did you install or run this?
       options:
-        - ./install.sh
         - ./manage.sh
         - Manual / other
     validations:

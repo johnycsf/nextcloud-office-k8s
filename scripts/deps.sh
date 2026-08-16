@@ -4,8 +4,8 @@
 # shellcheck shell=bash
 
 # Usage from install.sh:
-#   # shellcheck source=deps.sh
-#   source "${ROOT}/deps.sh"
+#   # shellcheck source=scripts/deps.sh
+#   source "${ROOT}/scripts/deps.sh"
 #   ensure_host_deps docker          # docker stacks
 #   ensure_host_deps k8s             # kubernetes stacks
 #   ensure_host_deps heimdall-k8s    # k8s + local image build (docker|podman)
@@ -698,7 +698,7 @@ _deps_ensure_docker() {
     _deps_wrap_docker_sudo
   else
     echo "Docker is installed but not usable yet. Try: sudo systemctl start docker" >&2
-    echo "Or log out/in after being added to the docker group, then re-run ./install.sh" >&2
+    echo "Or log out/in after being added to the docker group, then re-run ./manage.sh" >&2
     return 1
   fi
 
@@ -1151,7 +1151,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
   ${UI_GREEN}•${UI_RESET} Docker: host port conflict checks + optional custom ports at install
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
-  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./backup.sh)
+  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh backup)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
   ${UI_GREEN}•${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
 EOF
@@ -1193,7 +1193,7 @@ doctor_docker() {
     df -h "${ROOT}/data" 2>/dev/null | tail -1 || true
     ui_ok "data/ present"
   else
-    ui_warn "No data/ directory yet — run ./install.sh first"
+    ui_warn "No data/ directory yet — run ./manage.sh first"
   fi
 
   echo
@@ -1204,7 +1204,7 @@ doctor_docker() {
     ui_ok "Local snapshots: ${n}"
     ls -1dt "${ROOT}/backups/snapshots"/* 2>/dev/null | head -3 | sed 's/^/  /' || true
   else
-    ui_info "No local backups/ yet — use ./backup.sh --dest /path"
+    ui_info "No local backups/ yet — use ./manage.sh backup --dest /path"
   fi
 
   if [[ -f "${ROOT}/.env" ]]; then
@@ -1234,7 +1234,7 @@ doctor_k8s() {
     kubectl -n "${ns}" get deploy,sts,svc,pvc 2>/dev/null || kubectl -n "${ns}" get all,pvc 2>/dev/null || true
     ui_ok "Namespace exists"
   else
-    ui_warn "Namespace ${ns} not found — run ./install.sh"
+    ui_warn "Namespace ${ns} not found — run ./manage.sh"
   fi
 
   echo
@@ -1332,11 +1332,11 @@ manage_menu_docker() {
     "Uninstall" \
     "Exit"
   case "${choice}" in
-    "Install / reconfigure") exec "${ROOT}/install.sh" ;;
-    "Update") exec "${ROOT}/update.sh" ;;
+    "Install / reconfigure") exec "${ROOT}/scripts/install.sh" ;;
+    "Update") exec "${ROOT}/scripts/update.sh" ;;
     "Backup")
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      exec "${ROOT}/backup.sh" --dest "${dest}"
+      exec "${ROOT}/scripts/backup.sh" --dest "${dest}"
       ;;
     "Status / doctor") doctor_docker "${title}" ;;
     "Uninstall") uninstall_docker_stack "${title}" ;;
@@ -1358,11 +1358,11 @@ manage_menu_k8s() {
     "Uninstall" \
     "Exit"
   case "${choice}" in
-    "Install / reconfigure (storage + replicas)") exec "${ROOT}/install.sh" ;;
-    "Update") exec "${ROOT}/update.sh" ;;
+    "Install / reconfigure (storage + replicas)") exec "${ROOT}/scripts/install.sh" ;;
+    "Update") exec "${ROOT}/scripts/update.sh" ;;
     "Backup")
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      exec "${ROOT}/backup.sh" --dest "${dest}"
+      exec "${ROOT}/scripts/backup.sh" --dest "${dest}"
       ;;
     "Status / doctor") doctor_k8s "${title}" "${ns}" ;;
     "Uninstall") uninstall_k8s_stack "${title}" "${ns}" ;;

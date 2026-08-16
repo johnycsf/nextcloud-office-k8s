@@ -19,6 +19,6 @@ You should receive an acknowledgment when possible. There is no bug bounty for t
 
 ## Hardening expectations
 
-These stacks are aimed at **homelab / trusted LAN** use. You are responsible for reverse proxies, TLS, firewalls, backups, and keeping upstream images updated (`./update.sh` where provided).
+These stacks are aimed at **homelab / trusted LAN** use. You are responsible for reverse proxies, TLS, firewalls, backups, and keeping upstream images updated (`./manage.sh update` where provided).
 
 See also [DISCLAIMER.md](DISCLAIMER.md) and [CREDITS.md](CREDITS.md).

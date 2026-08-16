@@ -2,11 +2,11 @@
 # Safely update Nextcloud + MariaDB + Collabora (+ Redis if present) on Kubernetes.
 # Creates a local rollback backup first, then asks whether to keep it.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=deps.sh
-source "${ROOT}/deps.sh"
-# shellcheck source=lib.sh
-source "${ROOT}/lib.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/deps.sh
+source "${ROOT}/scripts/deps.sh"
+# shellcheck source=scripts/lib.sh
+source "${ROOT}/scripts/lib.sh"
 cd "$ROOT"
 
 
@@ -23,8 +23,8 @@ Tip: Local backups under backups/ can fill your disk over time.
 Copy important snapshots to an external drive, NAS, or cloud
 (rclone, Backblaze B2, S3, Nextcloud, etc.), then keep fewer copies here.
 Restore later with:
-  ./backup.sh --restore --from ./backups
-  ./backup.sh --restore --from /mnt/usb/my-backups
+  ./manage.sh backup --restore --from ./backups
+  ./manage.sh backup --restore --from /mnt/usb/my-backups
 EOF
 }
 
@@ -108,21 +108,21 @@ ask_backup_retention() {
       prune_old_backups "${keep}"
       print_offsite_tip
       echo "  This snapshot: ${dir}"
-      echo "  Manual restore: ./backup.sh --restore --from ./backups"
+      echo "  Manual restore: ./manage.sh backup --restore --from ./backups"
       ;;
   esac
 }
 
 create_backup() {
-  if [[ ! -x "${ROOT}/backup.sh" ]]; then
+  if [[ ! -x "${ROOT}/scripts/backup.sh" ]]; then
     echo "Missing executable backup.sh (required for pre-update snapshots)." >&2
     exit 1
   fi
   local keep="${DEFAULT_KEEP}"
   [[ -f "${KEEP_FILE}" ]] && keep="$(tr -dc '0-9' <"${KEEP_FILE}" || true)"
   [[ -z "${keep}" ]] && keep="${DEFAULT_KEEP}"
-  echo "==> Pre-update snapshot via ./backup.sh --dest ${BACKUP_ROOT} ..."
-  "${ROOT}/backup.sh" --dest "${BACKUP_ROOT}" --keep "${keep}"
+  echo "==> Pre-update snapshot via ./manage.sh backup --dest ${BACKUP_ROOT} ..."
+  "${ROOT}/scripts/backup.sh" --dest "${BACKUP_ROOT}" --keep "${keep}"
   if [[ -L "${BACKUP_ROOT}/latest" ]]; then
     BACKUP_DIR="$(readlink -f "${BACKUP_ROOT}/latest")"
   else
@@ -140,7 +140,7 @@ need kubectl
 require_storage_class
 
 if ! kubectl -n "$NS" get deploy nextcloud >/dev/null 2>&1; then
-  echo "Nextcloud is not installed yet. Run ./install.sh first." >&2
+  echo "Nextcloud is not installed yet. Run ./manage.sh first." >&2
   exit 1
 fi
 
@@ -179,6 +179,6 @@ fi
 echo
 echo "Update finished. PVCs and Secret nextcloud-db were left untouched."
 echo "Optional checks:"
-echo "  ./verify-office.sh"
-echo "  ./configure-office.sh   # only if Office URLs/IPs changed"
+echo "  ./scripts/verify-office.sh"
+echo "  ./scripts/configure-office.sh   # only if Office URLs/IPs changed"
 ask_backup_retention "${BACKUP_DIR}"

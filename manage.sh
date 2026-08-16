@@ -3,8 +3,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
-# shellcheck source=deps.sh
-source "${ROOT}/deps.sh"
+# shellcheck source=scripts/deps.sh
+source "${ROOT}/scripts/deps.sh"
 
 TITLE="Nextcloud + Office"
 NS="nextcloud"
@@ -19,7 +19,7 @@ Usage:
   ./manage.sh                 Interactive menu
   ./manage.sh install         Install / reconfigure (storage + replicas)
   ./manage.sh update          Safe update (pre-backup)
-  ./manage.sh backup [args]   Pass-through to backup.sh
+  ./manage.sh backup [args]   Pass-through to scripts/backup.sh
   ./manage.sh status|doctor   Health check
   ./manage.sh uninstall       Interactive uninstall
   ./manage.sh features        Show differentiators
@@ -34,9 +34,9 @@ EOF
 
 case "${CMD}" in
   ""|menu) manage_menu_k8s "$TITLE" "$NS" ;;
-  install) exec "${ROOT}/install.sh" "$@" ;;
-  update) exec "${ROOT}/update.sh" "$@" ;;
-  backup) exec "${ROOT}/backup.sh" "$@" ;;
+  install) exec "${ROOT}/scripts/install.sh" "$@" ;;
+  update) exec "${ROOT}/scripts/update.sh" "$@" ;;
+  backup) exec "${ROOT}/scripts/backup.sh" "$@" ;;
   status|doctor) doctor_k8s "$TITLE" "$NS" ;;
   uninstall) uninstall_k8s_stack "$TITLE" "$NS" ;;
   features) ui_banner "$TITLE" "Features"; print_homelab_features ;;

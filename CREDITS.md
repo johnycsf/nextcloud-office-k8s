@@ -16,8 +16,8 @@ These install/manage/backup helpers are used across johnycsf stacks. Credit the 
 
 | Tool | Role in this repo | Upstream |
 |------|-------------------|----------|
-| **age** | Optional encrypted offsite backup exports (`./backup.sh --encrypt` / password-protected tar archives) | [FiloSottile/age](https://github.com/FiloSottile/age) |
-| **zip** / **unzip** | Optional compressed zip exports (`./backup.sh --archive zip`) | [Info-ZIP](http://www.info-zip.org/) |
+| **age** | Optional encrypted offsite backup exports (`./manage.sh backup --encrypt` / password-protected tar archives) | [FiloSottile/age](https://github.com/FiloSottile/age) |
+| **zip** / **unzip** | Optional compressed zip exports (`./manage.sh backup --archive zip`) | [Info-ZIP](http://www.info-zip.org/) |
 | **xz** | Optional tar.xz compressed exports | OS `xz` / xz-utils package |
 | **rsync** | Incremental hardlink snapshot backups | [rsync.samba.org](https://rsync.samba.org/) / your OS package |
 | **Docker** / **Docker Compose** | Container runtime for app stacks | [docker.com](https://www.docker.com/) |

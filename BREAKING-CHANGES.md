@@ -17,12 +17,12 @@ Nextcloud does **not** auto-convert SQLite → MariaDB.
 
 ## If you already have a working Nextcloud
 
-1. **Do nothing** after pulling — do not run `./install.sh`.
+1. **Do nothing** after pulling — do not run `./manage.sh`.
 2. Or pin the last working commit.
 3. Or migrate deliberately: backup, delete/recreate PVCs (or new namespace), fresh install, restore files.
 
 `install.sh` refuses when it detects LinuxServer or SQLite installs, unless:
 
 ```bash
-I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL=yes ./install.sh
+I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL=yes ./manage.sh install
 ```

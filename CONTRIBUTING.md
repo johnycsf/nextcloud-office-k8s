@@ -21,7 +21,7 @@ If you encounter an error or unexpected behavior, please use GitHub (that is the
    - Exact commands you ran
    - Full error output
    - OS and relevant tool versions (for example Docker / Compose, kubectl / Helm, or shell / Starship when applicable)
-   - Whether you used `./install.sh`, `./manage.sh`, or manual steps
+   - Whether you used `./manage.sh`, `./manage.sh`, or manual steps
 3. Optionally open a **Pull Request** with a fix (see below).
 
 Do not expect private email or DM troubleshooting. Bug reports and fixes belong on GitHub Issues and Pull Requests.
@@ -37,6 +37,6 @@ Do not expect private email or DM troubleshooting. Bug reports and fixes belong 
 ## Guidelines
 
 - Prefer clarity over cleverness
-- Keep one-command installs working (`./install.sh` / `./manage.sh` where present)
+- Keep one-command installs working (`./manage.sh` / `./manage.sh` where present)
 - Do not commit secrets, tokens, or personal hostnames/IPs
 - Match existing file style

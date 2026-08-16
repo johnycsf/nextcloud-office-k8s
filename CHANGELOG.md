@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Single entrypoint: `./manage.sh` (install/update/backup helpers moved under `scripts/`).
+
 - Native ↑/↓ `>` menus in `./manage.sh` (replaced gum/whiptail chooser).
 
 - Optional compressed backup exports (`--archive tar.gz|tar.xz|zip`) with simple password protection; age remains available for strong crypto.

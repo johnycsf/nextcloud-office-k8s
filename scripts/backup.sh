@@ -2,14 +2,14 @@
 # Disaster-recovery backup/restore with incremental rsync snapshots (k8s).
 # Restores HTML + MariaDB and runs occ repair/scan on a fresh cluster.
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=deps.sh
-source "${ROOT}/deps.sh"
-# shellcheck source=lib.sh
-source "${ROOT}/lib.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/deps.sh
+source "${ROOT}/scripts/deps.sh"
+# shellcheck source=scripts/lib.sh
+source "${ROOT}/scripts/lib.sh"
 cd "$ROOT"
-# shellcheck source=backup-encrypt.sh
-source "${ROOT}/backup-encrypt.sh"
+# shellcheck source=scripts/backup-encrypt.sh
+source "${ROOT}/scripts/backup-encrypt.sh"
 STACK_ID="nextcloud-office-k8s"
 
 need_rsync() {
@@ -22,11 +22,11 @@ need_rsync() {
 usage() {
   cat <<EOF
 Usage:
-  ./backup.sh --dest /path/to/backup-root [--keep N]
-  ./backup.sh --restore --from /path/to/backup-root-or-snapshot
-  ./backup.sh --help
+  ./manage.sh backup --dest /path/to/backup-root [--keep N]
+  ./manage.sh backup --restore --from /path/to/backup-root-or-snapshot
+  ./manage.sh backup --help
 
-Disaster-recovery backups (also used by ./update.sh for pre-update snapshots into ./backups).
+Disaster-recovery backups (also used by ./manage.sh update for pre-update snapshots into ./backups).
 
   --dest DIR    Create a new incremental snapshot under DIR.
                 Uses rsync hardlinks against the previous snapshot so
@@ -52,8 +52,8 @@ Disaster-recovery backups (also used by ./update.sh for pre-update snapshots int
   *.tar.gz.age / *.tar.xz.age / *.tar.age / *.age.
 
 Fresh-machine workflow:
-  1) Install this stack on the new host (./install.sh) so runtime exists.
-  2) ./backup.sh --restore --from /mnt/usb/my-backups
+  1) Install this stack on the new host (./manage.sh) so runtime exists.
+  2) ./manage.sh backup --restore --from /mnt/usb/my-backups
   3) Script replaces data/secrets and finishes app-specific repair (e.g. Nextcloud scan).
 
 Database safety:
@@ -462,9 +462,9 @@ post_restore_nextcloud() {
   }
   echo "==> Scanning app data..."
   occ files:scan-app-data || true
-  if [[ -x "${ROOT}/configure-office.sh" ]]; then
+  if [[ -x "${ROOT}/scripts/configure-office.sh" ]]; then
     echo "==> Re-applying Collabora / trusted domains for this cluster..."
-    "${ROOT}/configure-office.sh" || echo "Warning: configure-office.sh had errors." >&2
+    "${ROOT}/scripts/configure-office.sh" || echo "Warning: configure-office.sh had errors." >&2
   fi
 }
 

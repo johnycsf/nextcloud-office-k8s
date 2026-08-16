@@ -2,9 +2,9 @@
 # Smoke-test Nextcloud ↔ Collabora wiring. Exit 0 only if checks pass.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
-source "${ROOT}/lib.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/lib.sh
+source "${ROOT}/scripts/lib.sh"
 
 need kubectl
 
@@ -89,7 +89,7 @@ if redis_deployed; then
     fail "Redis pod did not respond to PING"
   fi
 else
-  pass "Redis not deployed (optional; use ./install.sh --include-redis)"
+  pass "Redis not deployed (optional; use ./manage.sh install --include-redis)"
 fi
 
 WOPI_URL="$(occ config:app:get richdocuments wopi_url 2>/dev/null || true)"
@@ -98,7 +98,7 @@ PUBLIC_WOPI="$(occ config:app:get richdocuments public_wopi_url 2>/dev/null || t
 if [[ -n "${WOPI_URL}" ]]; then
   pass "richdocuments is configured"
 else
-  fail "richdocuments wopi_url is empty — run ./configure-office.sh"
+  fail "richdocuments wopi_url is empty — run ./scripts/configure-office.sh"
 fi
 
 if [[ "${WOPI_URL}" == "${COLLABORA_INTERNAL_URL}" ]]; then
@@ -128,5 +128,5 @@ if [[ "${FAIL}" -eq 0 ]]; then
 fi
 
 echo "One or more checks failed." >&2
-echo "Re-run: NEXTCLOUD_HOST=${NC_HOST} COLLABORA_HOST=${COLLABORA_HOST} ./configure-office.sh" >&2
+echo "Re-run: NEXTCLOUD_HOST=${NC_HOST} COLLABORA_HOST=${COLLABORA_HOST} ./scripts/configure-office.sh" >&2
 exit 1

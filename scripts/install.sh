@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Install / reconfigure Nextcloud + Collabora + MariaDB on Kubernetes (interactive).
-# Optional: ./install.sh --include-redis
+# Optional: ./manage.sh install --include-redis
 # Re-run anytime to change StorageClass preference or Nextcloud replica count.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=deps.sh
-source "${ROOT}/deps.sh"
-# shellcheck source=lib.sh
-source "${ROOT}/lib.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/deps.sh
+source "${ROOT}/scripts/deps.sh"
+# shellcheck source=scripts/lib.sh
+source "${ROOT}/scripts/lib.sh"
 
 parse_install_args "$@"
 if [[ "${SHOW_HELP}" -eq 1 ]]; then
@@ -65,7 +65,7 @@ echo
 ui_ok "Pods are up (replicas=${CHOSEN_REPLICAS:-1}, storage=${CHOSEN_STORAGE_CLASS:-})"
 ui_info "${REDIS_NOTE}"
 ui_info "Open: ${UI_BOLD}http://${NC_IP}/${UI_RESET}"
-ui_info "Re-run ./install.sh anytime to change replicas or storage preference"
+ui_info "Re-run ./manage.sh anytime to change replicas or storage preference"
 echo
 ui_info "Finishing Office (Collabora) setup…"
-"${ROOT}/configure-office.sh"
+"${ROOT}/scripts/configure-office.sh"

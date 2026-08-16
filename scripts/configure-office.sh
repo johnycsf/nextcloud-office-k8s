@@ -5,9 +5,9 @@
 #   https://github.com/nextcloud/richdocuments/blob/main/docs/install.md
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib.sh
-source "${ROOT}/lib.sh"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/lib.sh
+source "${ROOT}/scripts/lib.sh"
 
 need kubectl
 
@@ -20,7 +20,7 @@ COLLABORA_HOST="${COLLABORA_HOST:-$(wait_svc_address collabora)}"
 
 if [[ -z "${NC_HOST}" || -z "${COLLABORA_HOST}" ]]; then
   echo "Could not determine service addresses. Set them explicitly:" >&2
-  echo "  NEXTCLOUD_HOST=192.168.1.50 COLLABORA_HOST=192.168.1.50 ./configure-office.sh" >&2
+  echo "  NEXTCLOUD_HOST=192.168.1.50 COLLABORA_HOST=192.168.1.50 ./scripts/configure-office.sh" >&2
   exit 1
 fi
 
@@ -69,7 +69,7 @@ for i in $(seq 1 180); do
   fi
   if [[ "$i" -eq 180 ]]; then
     echo "Timed out waiting for Nextcloud installation." >&2
-    echo "Create the admin account at ${NC_URL}, then re-run: ./configure-office.sh" >&2
+    echo "Create the admin account at ${NC_URL}, then re-run: ./scripts/configure-office.sh" >&2
     exit 1
   fi
   sleep 5
