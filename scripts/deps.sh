@@ -720,6 +720,33 @@ configure_container_engine() {
   fi
 }
 
+_deps_ensure_podman_api() {
+  # docker-compose invoked via `podman compose` talks to the Podman API socket.
+  # Rootless installs need the user socket (and often linger for SSH/non-login sessions).
+  local sock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+  if [[ -S "${sock}" ]]; then
+    return 0
+  fi
+  if command -v loginctl >/dev/null 2>&1; then
+    loginctl enable-linger "$(id -un)" >/dev/null 2>&1 || \
+      sudo loginctl enable-linger "$(id -un)" >/dev/null 2>&1 || true
+  fi
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
+  fi
+  if [[ ! -S "${sock}" ]] && command -v podman >/dev/null 2>&1; then
+    # Last resort: start API service in background for this session
+    podman system service --time=0 "unix://${sock}" >/dev/null 2>&1 &
+    sleep 1
+  fi
+  if [[ ! -S "${sock}" ]]; then
+    echo "Podman API socket missing (${sock})." >&2
+    echo "Try: systemctl --user enable --now podman.socket" >&2
+    echo "And: loginctl enable-linger $(id -un)" >&2
+    return 1
+  fi
+}
+
 _deps_ensure_podman() {
   _deps_detect_os
 
@@ -764,6 +791,8 @@ _deps_ensure_podman() {
     fi
     return 1
   fi
+
+  _deps_ensure_podman_api || return 1
 
   if ! podman compose version >/dev/null 2>&1 && ! _deps_have podman-compose; then
     echo "Podman Compose missing — installing podman-compose..."
