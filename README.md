@@ -2,6 +2,9 @@
 
 ![Repobeats analytics image](https://repobeats.axiom.co/api/embed/bbf1d0685d6a0387a3d1479b5c486c911d26b7a6.svg "Repobeats analytics image")
 
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/johnycsf)
+
 Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/) and **MariaDB** (not SQLite).
 
 Uses the **official** [`nextcloud`](https://hub.docker.com/_/nextcloud) and [`mariadb:lts`](https://hub.docker.com/_/mariadb) images.
@@ -48,6 +51,17 @@ References:
 | Collabora cannot reach Nextcloud via LAN IP | `hostAliases` maps your Nextcloud host/IP to the Service ClusterIP |
 | Slow Collabora first start | Longer startup probe + higher memory limit |
 
+
+## Why this repo (not just another manifest dump)
+
+- **`./manage.sh`** control center — install, update, backup, status/doctor, uninstall
+- Interactive colored install with step progress
+- Auto-detects your OS and installs missing host tools (`kubectl`, `helm`, …)
+- Choose **StorageClass** and **replica count** (re-run anytime to change)
+- Safe **`./update.sh`** with automatic pre-update backup
+- Incremental hardlink **`./backup.sh`** + restore
+- **Official upstream images only**
+
 ## What you need
 
 - A Kubernetes cluster (`kubectl` context already set)
@@ -74,10 +88,10 @@ kubectl -n longhorn-system get pod
 ```bash
 git clone https://github.com/johnycsf/nextcloud-office-k8s.git
 cd nextcloud-office-k8s
-chmod +x install.sh configure-office.sh verify-office.sh
-./install.sh
-# optional Redis (official caching / file locking):
-# ./install.sh --include-redis
+chmod +x manage.sh install.sh configure-office.sh verify-office.sh
+./manage.sh          # interactive control center
+# or: ./install.sh
+# optional Redis: ./install.sh --include-redis
 ```
 
 What the script does:
@@ -228,3 +242,12 @@ Deletes PVCs and your Nextcloud + MariaDB data.
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Support this work
+
+If these homelab tools save you time, please consider sponsoring:
+
+[![Sponsor johnycsf](https://img.shields.io/badge/GitHub%20Sponsors-Donate-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/johnycsf)
+
+👉 **[github.com/sponsors/johnycsf](https://github.com/sponsors/johnycsf)** — tips and monthly support keep these beginner-friendly stacks maintained.
+

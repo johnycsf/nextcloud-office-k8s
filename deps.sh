@@ -913,3 +913,221 @@ ensure_host_deps() {
 
   ui_ok "Host dependencies ready"
 }
+
+
+# --- Doctor / control-center helpers (feature-rich manage.sh) ---
+
+print_homelab_features() {
+  cat <<EOF
+${UI_BOLD}What makes this stack different${UI_RESET}
+  ${UI_GREEN}•${UI_RESET} Interactive install with colors, steps, and progress
+  ${UI_GREEN}•${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/…)
+  ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
+  ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
+  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (`./backup.sh`)
+  ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
+  ${UI_GREEN}•${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
+EOF
+}
+
+doctor_docker() {
+  local title="${1:-App}"
+  ui_banner "${title}" "Doctor · Docker stack health"
+  if [[ ! -f "${ROOT}/docker-compose.yml" && ! -f "${ROOT}/compose.yaml" ]]; then
+    ui_err "No docker-compose.yml in ${ROOT}"
+    return 1
+  fi
+
+  ui_step "Compose services"
+  if docker compose ps 2>/dev/null; then
+    ui_ok "compose ps OK"
+  else
+    ui_warn "Could not query compose status (is the stack installed?)"
+  fi
+
+  echo
+  ui_step "Disk (data/)"
+  if [[ -d "${ROOT}/data" ]]; then
+    du -sh "${ROOT}/data" 2>/dev/null || true
+    df -h "${ROOT}/data" 2>/dev/null | tail -1 || true
+    ui_ok "data/ present"
+  else
+    ui_warn "No data/ directory yet — run ./install.sh first"
+  fi
+
+  echo
+  ui_step "Backups"
+  if [[ -d "${ROOT}/backups/snapshots" ]]; then
+    local n
+    n="$(ls -1d "${ROOT}/backups/snapshots"/* 2>/dev/null | wc -l | tr -d ' ')"
+    ui_ok "Local snapshots: ${n}"
+    ls -1dt "${ROOT}/backups/snapshots"/* 2>/dev/null | head -3 | sed 's/^/  /' || true
+  else
+    ui_info "No local backups/ yet — use ./backup.sh --dest /path"
+  fi
+
+  if [[ -f "${ROOT}/.env" ]]; then
+    ui_ok ".env present"
+  else
+    ui_warn ".env missing"
+  fi
+  echo
+  print_homelab_features
+}
+
+doctor_k8s() {
+  local title="$1" ns="$2"
+  ui_banner "${title}" "Doctor · Kubernetes health (ns=${ns})"
+  if ! command -v kubectl >/dev/null 2>&1; then
+    ui_err "kubectl not found"
+    return 1
+  fi
+
+  ui_step "Cluster"
+  kubectl cluster-info 2>/dev/null | head -3 || ui_warn "cluster-info failed"
+  kubectl get nodes -o wide 2>/dev/null | head -5 || true
+
+  echo
+  ui_step "Namespace ${ns}"
+  if kubectl get ns "${ns}" >/dev/null 2>&1; then
+    kubectl -n "${ns}" get deploy,sts,svc,pvc 2>/dev/null || kubectl -n "${ns}" get all,pvc 2>/dev/null || true
+    ui_ok "Namespace exists"
+  else
+    ui_warn "Namespace ${ns} not found — run ./install.sh"
+  fi
+
+  echo
+  ui_step "Saved install choices"
+  if [[ -f "${ROOT}/.storage-class" ]]; then
+    ui_ok "StorageClass: $(tr -d '[:space:]' <"${ROOT}/.storage-class")"
+  else
+    ui_info "No .storage-class yet"
+  fi
+  if [[ -f "${ROOT}/.replicas" ]]; then
+    ui_ok "Replicas: $(tr -dc '0-9' <"${ROOT}/.replicas")"
+  else
+    ui_info "No .replicas yet"
+  fi
+
+  echo
+  ui_step "Backups"
+  if [[ -d "${ROOT}/backups/snapshots" ]]; then
+    local n
+    n="$(ls -1d "${ROOT}/backups/snapshots"/* 2>/dev/null | wc -l | tr -d ' ')"
+    ui_ok "Local snapshots: ${n}"
+  else
+    ui_info "No local backups/ yet"
+  fi
+  echo
+  print_homelab_features
+}
+
+confirm_destructive() {
+  local phrase="$1"
+  local typed
+  ui_warn "This can delete running apps and/or data."
+  ui_ask typed "Type ${phrase} to confirm" ""
+  [[ "${typed}" == "${phrase}" ]]
+}
+
+uninstall_docker_stack() {
+  local title="$1"
+  ui_banner "${title}" "Uninstall · Docker"
+  ui_warn "This stops containers. You choose whether to delete ./data"
+  confirm_destructive "uninstall" || { ui_info "Cancelled."; return 1; }
+
+  if [[ -f "${ROOT}/docker-compose.yml" || -f "${ROOT}/compose.yaml" ]]; then
+    ui_run "docker compose down" docker compose down || true
+  fi
+
+  local wipe
+  ui_ask_yn wipe "Also DELETE ./data (permanent)?" n
+  if [[ "${wipe}" == "y" ]]; then
+    confirm_destructive "delete-data" || { ui_info "Left data/ in place."; return 0; }
+    rm -rf "${ROOT}/data"
+    ui_ok "Deleted ./data"
+  else
+    ui_ok "Left ./data in place"
+  fi
+  ui_ok "Uninstall finished"
+}
+
+uninstall_k8s_stack() {
+  local title="$1" ns="$2"
+  ui_banner "${title}" "Uninstall · Kubernetes (ns=${ns})"
+  ui_warn "This deletes the namespace workloads. PVCs/data may remain until you delete them."
+  confirm_destructive "uninstall" || { ui_info "Cancelled."; return 1; }
+
+  if [[ -f "${ROOT}/deploy.yaml" ]]; then
+    # Best-effort delete of app resources; namespace deletion is optional
+    kubectl delete -f "${ROOT}/deploy.yaml" --ignore-not-found >/dev/null 2>&1 || true
+    if [[ -f "${ROOT}/deploy-redis.yaml" ]]; then
+      kubectl delete -f "${ROOT}/deploy-redis.yaml" --ignore-not-found >/dev/null 2>&1 || true
+    fi
+  fi
+
+  local wipe
+  ui_ask_yn wipe "Also DELETE namespace ${ns} (removes PVCs in that namespace)?" n
+  if [[ "${wipe}" == "y" ]]; then
+    confirm_destructive "delete-namespace" || { ui_info "Left namespace in place."; return 0; }
+    kubectl delete namespace "${ns}" --wait=false 2>/dev/null || true
+    ui_ok "Namespace ${ns} delete requested"
+  else
+    ui_ok "Left namespace ${ns} / PVCs in place"
+  fi
+  ui_ok "Uninstall finished"
+}
+
+manage_menu_docker() {
+  local title="$1" choice
+  ui_banner "${title}" "Control center · Docker"
+  print_homelab_features
+  echo
+  echo "  1) Install / reconfigure"
+  echo "  2) Update"
+  echo "  3) Backup"
+  echo "  4) Status / doctor"
+  echo "  5) Uninstall"
+  echo "  6) Exit"
+  echo
+  ui_ask choice "Choose" "4"
+  case "${choice}" in
+    1) exec "${ROOT}/install.sh" ;;
+    2) exec "${ROOT}/update.sh" ;;
+    3)
+      local dest
+      ui_ask dest "Backup destination directory" "${ROOT}/backups"
+      exec "${ROOT}/backup.sh" --dest "${dest}"
+      ;;
+    4) doctor_docker "${title}" ;;
+    5) uninstall_docker_stack "${title}" ;;
+    *) ui_info "Bye." ;;
+  esac
+}
+
+manage_menu_k8s() {
+  local title="$1" ns="$2" choice
+  ui_banner "${title}" "Control center · Kubernetes"
+  print_homelab_features
+  echo
+  echo "  1) Install / reconfigure (storage + replicas)"
+  echo "  2) Update"
+  echo "  3) Backup"
+  echo "  4) Status / doctor"
+  echo "  5) Uninstall"
+  echo "  6) Exit"
+  echo
+  ui_ask choice "Choose" "4"
+  case "${choice}" in
+    1) exec "${ROOT}/install.sh" ;;
+    2) exec "${ROOT}/update.sh" ;;
+    3)
+      local dest
+      ui_ask dest "Backup destination directory" "${ROOT}/backups"
+      exec "${ROOT}/backup.sh" --dest "${dest}"
+      ;;
+    4) doctor_k8s "${title}" "${ns}" ;;
+    5) uninstall_k8s_stack "${title}" "${ns}" ;;
+    *) ui_info "Bye." ;;
+  esac
+}
