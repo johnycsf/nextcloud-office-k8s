@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/) where tagged releases exist.
 
 ## [Unreleased]
+- Fix restore abort: empty optional ports tripped `set -e` in save_host_install_env.
 - Open chosen host ports in firewalld during install (rootless Podman needs this for LAN access).
 - Show live progress for compose pull/build (`ui_run --stream`) so long image downloads do not look frozen.
 - Fix features blurb: backticks around CONTAINER_ENGINE ran it as a shell command.
