@@ -22,13 +22,13 @@ need_rsync() {
 usage() {
   cat <<EOF
 Usage:
-  ./manage.sh backup --dest /path/to/backup-root [--keep N]
+  ./manage.sh backup --dest /mnt/backup [--keep N]
   ./manage.sh backup --restore --from /path/to/backup-root-or-snapshot
   ./manage.sh backup --help
 
 Disaster-recovery backups (also used by ./manage.sh update for pre-update snapshots into ./backups).
 
-  --dest DIR    Create a new incremental snapshot under DIR.
+  --dest DIR    Backup root; writes to DIR/<stack-id>/snapshots/...
                 Uses rsync hardlinks against the previous snapshot so
                 unchanged files are not duplicated on disk.
   --keep N      After backup, keep only the newest N snapshots (default: no prune).
@@ -485,7 +485,9 @@ do_backup() {
   need kubectl
   need_rsync
   [[ -n "$DEST" ]] || { echo "Provide --dest /path" >&2; exit 1; }
+  DEST="$(resolve_stack_backup_dest "${STACK_ID}" "${DEST}")"
   DEST="$(mkdir -p "$DEST" && cd "$DEST" && pwd)"
+  echo "==> Stack backup root: ${DEST}"
   prepare_snapshot_dirs "$DEST"
   echo "==> Snapshot ${SNAP_NAME} -> ${SNAP_DIR}"
   echo "==> DB strategy: logical MariaDB dump (safe). HTML files use incremental rsync."
@@ -559,6 +561,7 @@ do_restore() {
   need kubectl
   need_rsync
   [[ -n "$FROM" ]] || { echo "Provide --from /path" >&2; exit 1; }
+  FROM="$(resolve_stack_backup_from "${STACK_ID}" "${FROM}")"
   local snap src
   src="$(prepare_restore_from_arg "$FROM")"
   trap cleanup_restore_tmp EXIT
