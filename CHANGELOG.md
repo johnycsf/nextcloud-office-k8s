@@ -18,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/) where tagged releases exist.
 
 ## [Unreleased]
+- Open chosen host ports in firewalld during install (rootless Podman needs this for LAN access).
+- Show live progress for compose pull/build (`ui_run --stream`) so long image downloads do not look frozen.
+- Fix features blurb: backticks around CONTAINER_ENGINE ran it as a shell command.
+- Control-center banner uses remembered Docker/Podman engine label.
 - UI polish: install/doctor/uninstall banners reflect Docker vs Podman from `CONTAINER_ENGINE`.
 - Remember `CONTAINER_ENGINE` from `.env` for all manage actions; preserve it (and host ports) across restore; stop hard-requiring `docker` when Podman is selected.
 - Podman: prefer `podman-compose` over `podman compose`/docker-compose plugin; silence provider banner.

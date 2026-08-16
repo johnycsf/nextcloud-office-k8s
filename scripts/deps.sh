@@ -137,10 +137,31 @@ ui_ask_int() {
 }
 
 ui_run() {
-  # ui_run "Label" cmd...
+  # ui_run [--stream] "Label" cmd...
+  # Default: hide command output until done/fail (keeps menus tidy).
+  # --stream: show live stdout/stderr (use for long pulls/builds).
+  local stream=0
+  if [[ "${1:-}" == "--stream" ]]; then
+    stream=1
+    shift
+  fi
   local label="$1"
   shift
   local logfile status
+  if [[ "${stream}" -eq 1 ]]; then
+    echo "${UI_DIM}…${UI_RESET} ${label}"
+    ui_info "Showing live progress (large images can take several minutes)…"
+    set +e
+    "$@"
+    status=$?
+    set -e
+    if [[ "${status}" -eq 0 ]]; then
+      ui_ok "${label} done"
+      return 0
+    fi
+    ui_err "${label} failed"
+    return "${status}"
+  fi
   logfile="$(mktemp)"
   echo -n "${UI_DIM}…${UI_RESET} ${label} "
   set +e
@@ -305,6 +326,30 @@ port_conflict_with_others() {
   host_tcp_port_in_use "${port}"
 }
 
+
+ensure_host_firewall_tcp_port() {
+  # Open TCP port in firewalld when active. Rootless Podman does not auto-open
+  # host firewall ports the way Docker often does — without this, the app can be
+  # healthy on localhost while LAN browsers get "no route to host".
+  local port="$1"
+  [[ -n "${port}" ]] || return 0
+  command -v firewall-cmd >/dev/null 2>&1 || return 0
+  firewall-cmd --state >/dev/null 2>&1 || return 0
+  if firewall-cmd --quiet --query-port="${port}/tcp" 2>/dev/null; then
+    ui_ok "firewalld already allows ${port}/tcp"
+    return 0
+  fi
+  echo "==> Opening firewalld port ${port}/tcp for LAN access..."
+  if command -v sudo >/dev/null 2>&1 \
+    && sudo firewall-cmd --permanent --add-port="${port}/tcp" >/dev/null 2>&1 \
+    && sudo firewall-cmd --reload >/dev/null 2>&1; then
+    ui_ok "firewalld: ${port}/tcp open"
+    return 0
+  fi
+  ui_warn "Could not open firewalld ${port}/tcp — LAN access may fail."
+  ui_info "Run: sudo firewall-cmd --permanent --add-port=${port}/tcp && sudo firewall-cmd --reload"
+}
+
 configure_host_port() {
   # configure_host_port ENV_KEY "Human label" default
   # Writes KEY=port into .env and exports KEY for the current shell.
@@ -329,6 +374,7 @@ configure_host_port() {
     env_file_set "${key}" "${current}"
     printf -v "${key}" '%s' "${current}"
     export "${key?}"
+    ensure_host_firewall_tcp_port "${current}"
     return 0
   fi
 
@@ -350,6 +396,7 @@ configure_host_port() {
   printf -v "${key}" '%s' "${chosen}"
   export "${key?}"
   ui_ok "${label}: host port ${chosen} (saved to .env as ${key})"
+  ensure_host_firewall_tcp_port "${chosen}"
 }
 
 
@@ -1448,7 +1495,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Interactive install with colors, steps, and progress
   ${UI_GREEN}•${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/…)
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
-  ${UI_GREEN}•${UI_RESET} Docker or Podman at install (`CONTAINER_ENGINE`) + host port checks
+  ${UI_GREEN}•${UI_RESET} Docker or Podman at install (CONTAINER_ENGINE in .env) + host port checks
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
   ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
@@ -1622,7 +1669,8 @@ uninstall_k8s_stack() {
 
 manage_menu_docker() {
   local title="$1" choice dest from
-  ui_banner "${title}" "Control center · Docker"
+  load_container_engine
+  ui_banner "${title}" "Control center · $(container_engine_label)"
   print_homelab_features
   echo
   ui_choose choice "What do you want to do?" \
