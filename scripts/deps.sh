@@ -326,6 +326,30 @@ port_conflict_with_others() {
   host_tcp_port_in_use "${port}"
 }
 
+
+ensure_host_firewall_tcp_port() {
+  # Open TCP port in firewalld when active. Rootless Podman does not auto-open
+  # host firewall ports the way Docker often does — without this, the app can be
+  # healthy on localhost while LAN browsers get "no route to host".
+  local port="$1"
+  [[ -n "${port}" ]] || return 0
+  command -v firewall-cmd >/dev/null 2>&1 || return 0
+  firewall-cmd --state >/dev/null 2>&1 || return 0
+  if firewall-cmd --quiet --query-port="${port}/tcp" 2>/dev/null; then
+    ui_ok "firewalld already allows ${port}/tcp"
+    return 0
+  fi
+  echo "==> Opening firewalld port ${port}/tcp for LAN access..."
+  if command -v sudo >/dev/null 2>&1 \
+    && sudo firewall-cmd --permanent --add-port="${port}/tcp" >/dev/null 2>&1 \
+    && sudo firewall-cmd --reload >/dev/null 2>&1; then
+    ui_ok "firewalld: ${port}/tcp open"
+    return 0
+  fi
+  ui_warn "Could not open firewalld ${port}/tcp — LAN access may fail."
+  ui_info "Run: sudo firewall-cmd --permanent --add-port=${port}/tcp && sudo firewall-cmd --reload"
+}
+
 configure_host_port() {
   # configure_host_port ENV_KEY "Human label" default
   # Writes KEY=port into .env and exports KEY for the current shell.
@@ -350,6 +374,7 @@ configure_host_port() {
     env_file_set "${key}" "${current}"
     printf -v "${key}" '%s' "${current}"
     export "${key?}"
+    ensure_host_firewall_tcp_port "${current}"
     return 0
   fi
 
@@ -371,6 +396,7 @@ configure_host_port() {
   printf -v "${key}" '%s' "${chosen}"
   export "${key?}"
   ui_ok "${label}: host port ${chosen} (saved to .env as ${key})"
+  ensure_host_firewall_tcp_port "${chosen}"
 }
 
 
