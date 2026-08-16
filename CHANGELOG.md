@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Arrow-key interactive menus in `./manage.sh` (gum; whiptail/numbered fallback).
+
 - Optional age-encrypted backup exports (`--encrypt`) for offsite disaster recovery.
 
 # Changelog

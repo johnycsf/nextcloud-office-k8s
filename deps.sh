@@ -160,6 +160,141 @@ ui_run() {
 }
 
 
+
+# --- Arrow-key menus (gum → whiptail → numbered fallback) ---
+
+_ui_gum_theme() {
+  # Catppuccin Mocha–aligned gum colors (matches pastel UI)
+  export GUM_CHOOSE_CURSOR_FOREGROUND="#cba6f7"
+  export GUM_CHOOSE_HEADER_FOREGROUND="#89b4fa"
+  export GUM_CHOOSE_SELECTED_FOREGROUND="#a6e3a1"
+  export GUM_CHOOSE_CURSOR="#cba6f7"
+  export GUM_CONFIRM_PROMPT_FOREGROUND="#cdd6f4"
+  export GUM_CONFIRM_SELECTED_FOREGROUND="#1e1e2e"
+  export GUM_CONFIRM_SELECTED_BACKGROUND="#a6e3a1"
+  export GUM_CONFIRM_UNSELECTED_FOREGROUND="#cdd6f4"
+  export GUM_INPUT_CURSOR_FOREGROUND="#cba6f7"
+  export GUM_INPUT_PROMPT_FOREGROUND="#89b4fa"
+  export GUM_INPUT_HEADER_FOREGROUND="#89b4fa"
+}
+
+_deps_install_gum_binary() {
+  _deps_have gum && return 0
+  _deps_ensure_cmd curl || true
+  local arch ver url tmp dest name
+  dest="${HOME}/.local/bin"
+  mkdir -p "${dest}"
+  arch="$(uname -m)"
+  case "${arch}" in
+    x86_64|amd64) arch=x86_64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *)
+      echo "Unsupported arch for gum binary: ${arch}" >&2
+      return 1
+      ;;
+  esac
+  ver="$(curl -fsSL https://api.github.com/repos/charmbracelet/gum/releases/latest 2>/dev/null \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
+  [[ -n "${ver}" ]] || ver="v0.16.0"
+  name="gum_${ver#v}_Linux_${arch}.tar.gz"
+  url="https://github.com/charmbracelet/gum/releases/download/${ver}/${name}"
+  tmp="$(mktemp -d)"
+  echo "Downloading gum ${ver} (${arch})..."
+  if ! curl -fsSL "${url}" -o "${tmp}/gum.tgz"; then
+    rm -rf "${tmp}"
+    return 1
+  fi
+  tar -xzf "${tmp}/gum.tgz" -C "${tmp}"
+  install -m 0755 "${tmp}/gum" "${dest}/gum"
+  rm -rf "${tmp}"
+  export PATH="${dest}:${PATH}"
+  hash -r 2>/dev/null || true
+  _deps_have gum
+}
+
+_ui_ensure_chooser() {
+  # Prefer gum (arrow keys + Enter). Fallback: whiptail. Last resort: numbered list.
+  if _deps_have gum; then
+    return 0
+  fi
+  if [[ "${SKIP_GUM_INSTALL:-}" == "1" ]]; then
+    return 1
+  fi
+  ui_info "Installing gum for arrow-key menus..."
+  if _deps_ensure_cmd gum 2>/dev/null && _deps_have gum; then
+    ui_ok "gum ready"
+    return 0
+  fi
+  if _deps_install_gum_binary; then
+    ui_ok "gum installed to ~/.local/bin"
+    return 0
+  fi
+  # whiptail / newt as secondary
+  if ! _deps_have whiptail; then
+    _deps_ensure_cmd whiptail 2>/dev/null || true
+  fi
+  if _deps_have gum || _deps_have whiptail; then
+    return 0
+  fi
+  ui_warn "gum/whiptail not available — using numbered menu fallback"
+  return 1
+}
+
+ui_choose() {
+  # ui_choose VAR "Header" "Option A" "Option B" ...
+  # Arrow keys + Enter when gum/whiptail available.
+  local __var="$1" __header="$2"
+  shift 2
+  local -a __opts=("$@")
+  local __picked="" __i __ans __menu_args=() __wt
+
+  if [[ ${#__opts[@]} -lt 1 ]]; then
+    echo "ui_choose: need at least one option" >&2
+    return 1
+  fi
+
+  if [[ ! -t 0 ]]; then
+    printf -v "${__var}" '%s' "${__opts[0]}"
+    return 0
+  fi
+
+  _ui_ensure_chooser || true
+
+  if _deps_have gum; then
+    _ui_gum_theme
+    if __picked="$(gum choose --header "${__header}" "${__opts[@]}")"; then
+      printf -v "${__var}" '%s' "${__picked}"
+      return 0
+    fi
+    return 1
+  fi
+
+  if _deps_have whiptail; then
+    for __i in "${!__opts[@]}"; do
+      __menu_args+=("$((__i + 1))" "${__opts[$__i]}")
+    done
+    __wt="$(whiptail --title "${__header}" --menu "${__header}" 20 70 10 "${__menu_args[@]}" 3>&1 1>&2 2>&3)" || return 1
+    printf -v "${__var}" '%s' "${__opts[$((__wt - 1))]}"
+    return 0
+  fi
+
+  # Numbered fallback
+  echo
+  echo "${UI_BOLD}${__header}${UI_RESET}"
+  for __i in "${!__opts[@]}"; do
+    echo "  $((__i + 1))) ${__opts[$__i]}"
+  done
+  echo
+  while true; do
+    ui_ask __ans "Choose" "1"
+    if [[ "${__ans}" =~ ^[0-9]+$ ]] && (( __ans >= 1 && __ans <= ${#__opts[@]} )); then
+      printf -v "${__var}" '%s' "${__opts[$((__ans - 1))]}"
+      return 0
+    fi
+    ui_warn "Enter a number between 1 and ${#__opts[@]}"
+  done
+}
+
 # --- Host port selection / conflict checks (docker publishes) ---
 
 env_file_get() {
@@ -239,8 +374,8 @@ configure_host_port() {
 
   echo
   ui_info "${label} — host port (default ${current})"
-  ui_ask_yn keep "Use default/current port ${current}?" y
-  if [[ "${keep}" == "y" ]]; then
+  ui_choose keep "Host port for ${label}"     "Use default/current (${current})"     "Choose a different port"
+  if [[ "${keep}" == Use* ]]; then
     chosen="${current}"
   else
     ui_ask_int chosen "Enter host port for ${label}" "${current}" 1 65535
@@ -387,6 +522,24 @@ _deps_packages_for_cmd() {
     age)
       echo age
       ;;
+    gum)
+      case "${DEPS_PKG}" in
+        brew) echo gum ;;
+        # Often missing from default repos — binary fallback handles it
+        *) echo gum ;;
+      esac
+      ;;
+    whiptail)
+      case "${DEPS_PKG}" in
+        dnf|yum) echo newt ;;
+        apt) echo whiptail ;;
+        pacman) echo newt ;;
+        zypper) echo newt ;;
+        apk) echo newt ;;
+        brew) echo newt ;;
+        *) echo whiptail ;;
+      esac
+      ;;
     tar)
       case "${DEPS_PKG}" in
         apt) echo tar ;;
@@ -456,6 +609,8 @@ _deps_ensure_cmd() {
       _deps_install_kubectl_binary || return 1
     elif [[ "${cmd}" == "helm" ]]; then
       _deps_install_helm_binary || return 1
+    elif [[ "${cmd}" == "gum" ]]; then
+      _deps_install_gum_binary || return 1
     else
       return 1
     fi
@@ -465,6 +620,8 @@ _deps_ensure_cmd() {
       _deps_install_kubectl_binary || return 1
     elif [[ "${cmd}" == "helm" ]]; then
       _deps_install_helm_binary || return 1
+    elif [[ "${cmd}" == "gum" ]]; then
+      _deps_install_gum_binary || return 1
     else
       echo "Installed packages for ${cmd}, but command still not on PATH." >&2
       return 1
@@ -1216,67 +1373,68 @@ uninstall_k8s_stack() {
 }
 
 manage_menu_docker() {
-  local title="$1" choice
+  local title="$1" choice dest encrypt_choice export_dir
   ui_banner "${title}" "Control center · Docker"
   print_homelab_features
   echo
-  echo "  1) Install / reconfigure"
-  echo "  2) Update"
-  echo "  3) Backup"
-  echo "  4) Status / doctor"
-  echo "  5) Uninstall"
-  echo "  6) Exit"
-  echo
-  ui_ask choice "Choose" "4"
+  ui_choose choice "What do you want to do?  (↑↓ arrows, Enter to select)" \
+    "Install / reconfigure" \
+    "Update" \
+    "Backup" \
+    "Status / doctor" \
+    "Uninstall" \
+    "Exit"
   case "${choice}" in
-    1) exec "${ROOT}/install.sh" ;;
-    2) exec "${ROOT}/update.sh" ;;
-    3)
-      local dest encrypt_yn export_dir
+    "Install / reconfigure") exec "${ROOT}/install.sh" ;;
+    "Update") exec "${ROOT}/update.sh" ;;
+    "Backup")
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      ui_ask_yn encrypt_yn "Also create an age-encrypted export for offsite/USB/NAS?" n
-      if [[ "${encrypt_yn}" == "y" ]]; then
+      ui_choose encrypt_choice "Encrypt an offsite copy with age?" \
+        "No — local snapshot only" \
+        "Yes — also create age-encrypted export"
+      if [[ "${encrypt_choice}" == Yes* ]]; then
         ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
         exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
       else
         exec "${ROOT}/backup.sh" --dest "${dest}"
       fi
       ;;
-    4) doctor_docker "${title}" ;;
-    5) uninstall_docker_stack "${title}" ;;
+    "Status / doctor") doctor_docker "${title}" ;;
+    "Uninstall") uninstall_docker_stack "${title}" ;;
     *) ui_info "Bye." ;;
   esac
 }
 
+
 manage_menu_k8s() {
-  local title="$1" ns="$2" choice
+  local title="$1" ns="$2" choice dest encrypt_choice export_dir
   ui_banner "${title}" "Control center · Kubernetes"
   print_homelab_features
   echo
-  echo "  1) Install / reconfigure (storage + replicas)"
-  echo "  2) Update"
-  echo "  3) Backup"
-  echo "  4) Status / doctor"
-  echo "  5) Uninstall"
-  echo "  6) Exit"
-  echo
-  ui_ask choice "Choose" "4"
+  ui_choose choice "What do you want to do?  (↑↓ arrows, Enter to select)" \
+    "Install / reconfigure (storage + replicas)" \
+    "Update" \
+    "Backup" \
+    "Status / doctor" \
+    "Uninstall" \
+    "Exit"
   case "${choice}" in
-    1) exec "${ROOT}/install.sh" ;;
-    2) exec "${ROOT}/update.sh" ;;
-    3)
-      local dest encrypt_yn export_dir
+    "Install / reconfigure (storage + replicas)") exec "${ROOT}/install.sh" ;;
+    "Update") exec "${ROOT}/update.sh" ;;
+    "Backup")
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      ui_ask_yn encrypt_yn "Also create an age-encrypted export for offsite/USB/NAS?" n
-      if [[ "${encrypt_yn}" == "y" ]]; then
+      ui_choose encrypt_choice "Encrypt an offsite copy with age?" \
+        "No — local snapshot only" \
+        "Yes — also create age-encrypted export"
+      if [[ "${encrypt_choice}" == Yes* ]]; then
         ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
         exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
       else
         exec "${ROOT}/backup.sh" --dest "${dest}"
       fi
       ;;
-    4) doctor_k8s "${title}" "${ns}" ;;
-    5) uninstall_k8s_stack "${title}" "${ns}" ;;
+    "Status / doctor") doctor_k8s "${title}" "${ns}" ;;
+    "Uninstall") uninstall_k8s_stack "${title}" "${ns}" ;;
     *) ui_info "Bye." ;;
   esac
 }
