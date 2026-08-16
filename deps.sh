@@ -159,6 +159,105 @@ ui_run() {
   return "${status}"
 }
 
+
+# --- Host port selection / conflict checks (docker publishes) ---
+
+env_file_get() {
+  # env_file_get KEY [default] [file]
+  local key="$1" def="${2:-}" file="${3:-.env}"
+  if [[ -f "${file}" ]] && grep -qE "^${key}=" "${file}"; then
+    grep -E "^${key}=" "${file}" | head -1 | cut -d= -f2-
+  else
+    printf '%s\n' "${def}"
+  fi
+}
+
+env_file_set() {
+  # env_file_set KEY value [file]
+  local key="$1" val="$2" file="${3:-.env}"
+  if [[ ! -f "${file}" ]]; then
+    printf '%s=%s\n' "${key}" "${val}" >"${file}"
+    return 0
+  fi
+  if grep -qE "^${key}=" "${file}"; then
+    sed -i "s|^${key}=.*|${key}=${val}|" "${file}"
+  else
+    printf '%s=%s\n' "${key}" "${val}" >>"${file}"
+  fi
+}
+
+host_tcp_port_in_use() {
+  local port="$1"
+  {
+    ss -H -ltn 2>/dev/null || true
+    ss -H -lun 2>/dev/null || true
+  } | awk '{print $4}' | awk -F: '{print $NF}' | grep -qx "${port}"
+}
+
+this_compose_publishes_port() {
+  local port="$1"
+  command -v docker >/dev/null 2>&1 || return 1
+  docker compose ps --format '{{.Ports}}' 2>/dev/null \
+    | grep -E "(^|[, ])([0-9.]+|\[::\]|\*|0\.0\.0\.0):${port}->" >/dev/null 2>&1
+}
+
+port_conflict_with_others() {
+  # True if something else on the host already owns this port (not this compose project).
+  local port="$1"
+  if this_compose_publishes_port "${port}"; then
+    return 1
+  fi
+  host_tcp_port_in_use "${port}"
+}
+
+configure_host_port() {
+  # configure_host_port ENV_KEY "Human label" default
+  # Writes KEY=port into .env and exports KEY for the current shell.
+  local key="$1" label="$2" default="$3"
+  local current chosen keep
+
+  current="$(env_file_get "${key}" "${default}")"
+  [[ -n "${current}" ]] || current="${default}"
+
+  if [[ "${SKIP_PORT_PROMPTS:-}" == "1" ]] || [[ ! -t 0 ]]; then
+    if port_conflict_with_others "${current}"; then
+      ui_err "Host port ${current} (${label} / ${key}) is already in use"
+      ui_info "Free the port, set ${key} to a free value in .env, or re-run interactively."
+      if [[ "${FORCE_PORT_IN_USE:-}" == "1" ]]; then
+        ui_warn "FORCE_PORT_IN_USE=1 — continuing anyway"
+      else
+        return 1
+      fi
+    else
+      ui_ok "${label}: host port ${current}"
+    fi
+    env_file_set "${key}" "${current}"
+    printf -v "${key}" '%s' "${current}"
+    export "${key?}"
+    return 0
+  fi
+
+  echo
+  ui_info "${label} — host port (default ${current})"
+  ui_ask_yn keep "Use default/current port ${current}?" y
+  if [[ "${keep}" == "y" ]]; then
+    chosen="${current}"
+  else
+    ui_ask_int chosen "Enter host port for ${label}" "${current}" 1 65535
+  fi
+
+  while port_conflict_with_others "${chosen}"; do
+    ui_warn "Port ${chosen} is already in use on this host"
+    ui_ask_int chosen "Pick a different host port for ${label}" "${default}" 1 65535
+  done
+
+  env_file_set "${key}" "${chosen}"
+  printf -v "${key}" '%s' "${chosen}"
+  export "${key?}"
+  ui_ok "${label}: host port ${chosen} (saved to .env as ${key})"
+}
+
+
 ui_progress_wait() {
   # ui_progress_wait "Label" timeout_secs check_command...
   local label="$1" timeout="$2"
@@ -946,6 +1045,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Interactive install with colors, steps, and progress
   ${UI_GREEN}•${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/…)
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
+  ${UI_GREEN}•${UI_RESET} Docker: host port conflict checks + optional custom ports at install
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
   ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore; optional age-encrypted offsite exports (`./backup.sh --encrypt`)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
@@ -960,6 +1060,20 @@ doctor_docker() {
     ui_err "No docker-compose.yml in ${ROOT}"
     return 1
   fi
+
+
+  ui_step "Published host ports (.env)"
+  local _pk _pv
+  for _pk in HTTP_PORT PORT IMMICH_PORT NEXTCLOUD_PORT COLLABORA_PORT; do
+    _pv="$(env_file_get "${_pk}" "" "${ROOT}/.env" 2>/dev/null || true)"
+    if [[ -n "${_pv}" ]]; then
+      if port_conflict_with_others "${_pv}" 2>/dev/null; then
+        ui_warn "${_pk}=${_pv} — in use by another process"
+      else
+        ui_ok "${_pk}=${_pv}"
+      fi
+    fi
+  done
 
   ui_step "Compose services"
   if docker compose ps 2>/dev/null; then
