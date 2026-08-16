@@ -105,7 +105,7 @@ kubectl -n longhorn-system get pod
 
 ## Interactive control center
 
-`./manage.sh` opens an **arrow-key menu** (↑↓ + Enter) powered by [gum](https://github.com/charmbracelet/gum). If gum isn’t installed yet, the script installs it automatically (or falls back to whiptail / a numbered list).
+`./manage.sh` opens a simple **↑/↓ menu** with a `>` cursor (j/k and Enter also work). No extra packages required.
 
 ## Install Nextcloud + Office
 
@@ -275,9 +275,9 @@ This project is provided **as is**. The author is **not responsible** for any lo
 
 If you hit an error, please [open a GitHub Issue](../../issues/new/choose) and follow [CONTRIBUTING.md](CONTRIBUTING.md). Fixes via Pull Request are welcome. GitHub Issues/PRs are the supported way to report problems—there is no private support channel.
 
-## Encrypted backups
+## Backup exports
 
-Local snapshots stay as incremental hardlink trees (fast rollback). For offsite/USB/NAS confidentiality, create an **age**-encrypted export (`./backup.sh --dest ./backups --encrypt`). SHA256 checksums cover integrity; age covers confidentiality. See upstream docs in repo-framework `docs/BACKUP_ENCRYPTION.md`.
+Local snapshots stay as incremental hardlink trees (fast rollback). Optionally create a compressed offsite copy with `./backup.sh --dest ./backups --archive tar.gz|tar.xz|zip` (add `--archive-password` for zip password or age-passphrase on tar). For stronger key-based encryption use `--encrypt` (age). See repo-framework `docs/BACKUP_ENCRYPTION.md`.
 
 ## Security
 

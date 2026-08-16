@@ -9,7 +9,7 @@ See [DISCLAIMER.md](DISCLAIMER.md). By using or contributing to this repository,
 
 ### Credits
 
-If your change adds a new upstream app, library, or CLI tool (for example gum, age, or a new container image), update [CREDITS.md](CREDITS.md) in the same pull request.
+If your change adds a new upstream app, library, or CLI tool (for example age, rsync, or a new container image), update [CREDITS.md](CREDITS.md) in the same pull request. If you **remove** a tool, remove its credit in the same PR.
 
 ## Reporting bugs
 
