@@ -1151,7 +1151,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
   ${UI_GREEN}•${UI_RESET} Docker: host port conflict checks + optional custom ports at install
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
-  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh backup)
+  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
   ${UI_GREEN}•${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
 EOF
@@ -1320,7 +1320,7 @@ uninstall_k8s_stack() {
 }
 
 manage_menu_docker() {
-  local title="$1" choice dest
+  local title="$1" choice dest from
   ui_banner "${title}" "Control center · Docker"
   print_homelab_features
   echo
@@ -1328,6 +1328,7 @@ manage_menu_docker() {
     "Install / reconfigure" \
     "Update" \
     "Backup" \
+    "Restore" \
     "Status / doctor" \
     "Uninstall" \
     "Exit"
@@ -1338,6 +1339,10 @@ manage_menu_docker() {
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
       exec "${ROOT}/scripts/backup.sh" --dest "${dest}"
       ;;
+    "Restore")
+      ui_ask from "Restore from (backup root, snapshot dir, or archive file)" "${ROOT}/backups"
+      exec "${ROOT}/scripts/backup.sh" --restore --from "${from}"
+      ;;
     "Status / doctor") doctor_docker "${title}" ;;
     "Uninstall") uninstall_docker_stack "${title}" ;;
     *) ui_info "Bye." ;;
@@ -1346,7 +1351,7 @@ manage_menu_docker() {
 
 
 manage_menu_k8s() {
-  local title="$1" ns="$2" choice dest
+  local title="$1" ns="$2" choice dest from
   ui_banner "${title}" "Control center · Kubernetes"
   print_homelab_features
   echo
@@ -1354,6 +1359,7 @@ manage_menu_k8s() {
     "Install / reconfigure (storage + replicas)" \
     "Update" \
     "Backup" \
+    "Restore" \
     "Status / doctor" \
     "Uninstall" \
     "Exit"
@@ -1363,6 +1369,10 @@ manage_menu_k8s() {
     "Backup")
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
       exec "${ROOT}/scripts/backup.sh" --dest "${dest}"
+      ;;
+    "Restore")
+      ui_ask from "Restore from (backup root, snapshot dir, or archive file)" "${ROOT}/backups"
+      exec "${ROOT}/scripts/backup.sh" --restore --from "${from}"
       ;;
     "Status / doctor") doctor_k8s "${title}" "${ns}" ;;
     "Uninstall") uninstall_k8s_stack "${title}" "${ns}" ;;
