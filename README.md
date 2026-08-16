@@ -239,9 +239,13 @@ Deletes PVCs and your Nextcloud + MariaDB data.
 - Official Nextcloud guides prefer a dedicated hostname for Collabora (e.g. `office.example.com`); the IP + LoadBalancer approach here is intentionally simpler for first-time homelab use.
 
 
-## Contributing
+## Disclaimer
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+This project is provided **as is**. The author is **not responsible** for any loss, damage, data corruption, downtime, security issues, or other consequences from using it. Full text: [DISCLAIMER.md](DISCLAIMER.md).
+
+## Bug reports & contributions
+
+If you hit an error, please [open a GitHub Issue](../../issues/new/choose) and follow [CONTRIBUTING.md](CONTRIBUTING.md). Fixes via Pull Request are welcome. GitHub Issues/PRs are the supported way to report problems—there is no private support channel.
 
 ## Support this work
 

@@ -1,0 +1,52 @@
+name: Bug report
+description: Report an error or unexpected behavior (GitHub Issues only)
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Please read [DISCLAIMER.md](../DISCLAIMER.md) — this software is provided as-is and the author is not responsible for damage or data loss.
+
+        Fill out the sections below so the issue can be triaged. Prefer GitHub Issues/PRs only (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+  - type: textarea
+    id: what
+    attributes:
+      label: What were you trying to do?
+      description: Short description of the goal.
+    validations:
+      required: true
+  - type: textarea
+    id: commands
+    attributes:
+      label: Exact commands you ran
+      description: Copy/paste commands and relevant config (redact secrets).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Error output
+      description: Full logs or error text.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Environment
+      description: "OS and tool versions (e.g. Fedora 42, Docker 27, Compose v2, kubectl 1.31)"
+      placeholder: OS / Docker or kubectl / app versions
+    validations:
+      required: true
+  - type: dropdown
+    id: how-installed
+    attributes:
+      label: How did you install or run this?
+      options:
+        - ./install.sh
+        - ./manage.sh
+        - Manual / other
+    validations:
+      required: true
