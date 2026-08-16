@@ -10,6 +10,157 @@
 #   ensure_host_deps k8s             # kubernetes stacks
 #   ensure_host_deps heimdall-k8s    # k8s + local image build (docker|podman)
 
+
+# --- Pretty terminal UI (colors, steps, prompts) ---
+_ui_setup() {
+  if [[ -t 1 && "${NO_COLOR:-}" != "1" ]]; then
+    UI_RESET=$'\033[0m'
+    UI_BOLD=$'\033[1m'
+    UI_DIM=$'\033[2m'
+    UI_RED=$'\033[31m'
+    UI_GREEN=$'\033[32m'
+    UI_YELLOW=$'\033[33m'
+    UI_BLUE=$'\033[34m'
+    UI_MAGENTA=$'\033[35m'
+    UI_CYAN=$'\033[36m'
+    UI_WHITE=$'\033[37m'
+  else
+    UI_RESET= UI_BOLD= UI_DIM= UI_RED= UI_GREEN= UI_YELLOW= UI_BLUE= UI_MAGENTA= UI_CYAN= UI_WHITE=
+  fi
+  UI_STEP_N=0
+  UI_STEP_TOTAL=0
+}
+_ui_setup
+
+ui_banner() {
+  local title="$1"
+  local subtitle="${2:-}"
+  local line
+  line="$(printf '═%.0s' {1..56})"
+  echo
+  echo "${UI_CYAN}${UI_BOLD}${line}${UI_RESET}"
+  echo "${UI_CYAN}${UI_BOLD}  ${title}${UI_RESET}"
+  if [[ -n "${subtitle}" ]]; then
+    echo "${UI_DIM}  ${subtitle}${UI_RESET}"
+  fi
+  echo "${UI_CYAN}${UI_BOLD}${line}${UI_RESET}"
+  echo
+}
+
+ui_steps_init() { UI_STEP_N=0; UI_STEP_TOTAL="${1:-0}"; }
+
+ui_step() {
+  local msg="$1"
+  UI_STEP_N=$((UI_STEP_N + 1))
+  if [[ "${UI_STEP_TOTAL}" -gt 0 ]]; then
+    echo "${UI_BLUE}${UI_BOLD}▸ Step ${UI_STEP_N}/${UI_STEP_TOTAL}${UI_RESET}  ${UI_BOLD}${msg}${UI_RESET}"
+  else
+    echo "${UI_BLUE}${UI_BOLD}▸${UI_RESET} ${UI_BOLD}${msg}${UI_RESET}"
+  fi
+}
+
+ui_info() { echo "${UI_CYAN}ℹ${UI_RESET} $*"; }
+ui_ok() { echo "${UI_GREEN}✔${UI_RESET} $*"; }
+ui_warn() { echo "${UI_YELLOW}⚠${UI_RESET} $*" >&2; }
+ui_err() { echo "${UI_RED}✖${UI_RESET} $*" >&2; }
+
+ui_ask() {
+  # ui_ask VAR "Prompt" "default"
+  local __var="$1" __prompt="$2" __def="${3:-}" __ans
+  if [[ ! -t 0 ]]; then
+    printf -v "${__var}" '%s' "${__def}"
+    return 0
+  fi
+  if [[ -n "${__def}" ]]; then
+    read -r -p "$(printf '%s [%s]: ' "${__prompt}" "${__def}")" __ans || true
+    __ans="${__ans:-$__def}"
+  else
+    read -r -p "$(printf '%s: ' "${__prompt}")" __ans || true
+  fi
+  printf -v "${__var}" '%s' "${__ans}"
+}
+
+ui_ask_yn() {
+  # ui_ask_yn VAR "Prompt" y|n
+  local __var="$1" __prompt="$2" __def="${3:-y}" __ans __hint
+  if [[ "${__def}" == "y" ]]; then __hint="Y/n"; else __hint="y/N"; fi
+  if [[ ! -t 0 ]]; then
+    printf -v "${__var}" '%s' "${__def}"
+    return 0
+  fi
+  read -r -p "$(printf '%s (%s): ' "${__prompt}" "${__hint}")" __ans || true
+  __ans="$(printf '%s' "${__ans:-$__def}" | tr '[:upper:]' '[:lower:]')"
+  case "${__ans}" in
+    y|yes) printf -v "${__var}" '%s' y ;;
+    n|no) printf -v "${__var}" '%s' n ;;
+    *) printf -v "${__var}" '%s' "${__def}" ;;
+  esac
+}
+
+ui_ask_int() {
+  # ui_ask_int VAR "Prompt" default min max
+  local __var="$1" __prompt="$2" __def="${3:-1}" __min="${4:-1}" __max="${5:-50}" __ans
+  while true; do
+    if [[ ! -t 0 ]]; then
+      __ans="${__def}"
+    else
+      read -r -p "$(printf '%s [%s]: ' "${__prompt}" "${__def}")" __ans || true
+      __ans="${__ans:-$__def}"
+    fi
+    if [[ "${__ans}" =~ ^[0-9]+$ ]] && (( __ans >= __min && __ans <= __max )); then
+      printf -v "${__var}" '%s' "${__ans}"
+      return 0
+    fi
+    ui_warn "Enter a number between ${__min} and ${__max}."
+    [[ -t 0 ]] || { printf -v "${__var}" '%s' "${__def}"; return 0; }
+  done
+}
+
+ui_run() {
+  # ui_run "Label" cmd...
+  local label="$1"
+  shift
+  local logfile status
+  logfile="$(mktemp)"
+  echo -n "${UI_DIM}…${UI_RESET} ${label} "
+  set +e
+  "$@" >"${logfile}" 2>&1
+  status=$?
+  set -e
+  if [[ "${status}" -eq 0 ]]; then
+    echo "${UI_GREEN}done${UI_RESET}"
+    rm -f "${logfile}"
+    return 0
+  fi
+  echo "${UI_RED}failed${UI_RESET}"
+  ui_err "${label} failed — last output:"
+  tail -n 40 "${logfile}" >&2 || true
+  rm -f "${logfile}"
+  return "${status}"
+}
+
+ui_progress_wait() {
+  # ui_progress_wait "Label" timeout_secs check_command...
+  local label="$1" timeout="$2"
+  shift 2
+  local i=0 spin='|/-\' frame
+  echo -n "${UI_DIM}…${UI_RESET} ${label} "
+  while (( i < timeout )); do
+    if "$@" >/dev/null 2>&1; then
+      echo "${UI_GREEN}ready${UI_RESET}"
+      return 0
+    fi
+    frame="${spin:i%4:1}"
+    printf '\r%s %s %s ' "${UI_DIM}…${UI_RESET}" "${label}" "${UI_CYAN}${frame}${UI_RESET}"
+    sleep 1
+    i=$((i + 1))
+  done
+  printf '\r'
+  echo "${UI_YELLOW}timeout${UI_RESET} — continuing anyway"
+  return 1
+}
+
+
 _deps_have() { command -v "$1" >/dev/null 2>&1; }
 
 _deps_run_root() {
@@ -434,7 +585,7 @@ choose_storage_class() {
 
   if [[ -n "${STORAGE_CLASS:-}" ]]; then
     sc="${STORAGE_CLASS}"
-    echo "Using StorageClass from STORAGE_CLASS=${sc}"
+    ui_info "Using StorageClass from STORAGE_CLASS=${sc}"
     ensure_storage_class_ready "${sc}" || return 1
     CHOSEN_STORAGE_CLASS="${sc}"
     save_storage_class "${sc}"
@@ -457,7 +608,7 @@ choose_storage_class() {
   fi
 
   echo
-  echo "Which Kubernetes storage should PersistentVolumeClaims use?"
+  ui_info "Which Kubernetes storage should PersistentVolumeClaims use?"
   echo "  (You can also set STORAGE_CLASS=name for a non-interactive install.)"
   echo
   echo "  1) Longhorn          — replicated block storage (recommended; can auto-install)"
@@ -532,10 +683,20 @@ choose_storage_class() {
   save_storage_class "${sc}"
 }
 
-# Install entrypoint: prompt + ensure provisioner if needed.
+# Install entrypoint: prompt + ensure provisioner if needed (keeps prior choice on re-run).
 configure_k8s_storage() {
+  local keep sc
+  if [[ -z "${STORAGE_CLASS:-}" ]] && sc="$(load_storage_class 2>/dev/null || true)" && [[ -n "${sc}" ]]; then
+    ui_ask_yn keep "Keep current StorageClass '${sc}'?" y
+    if [[ "${keep}" == "y" ]]; then
+      ensure_storage_class_ready "${sc}" || return 1
+      CHOSEN_STORAGE_CLASS="${sc}"
+      ui_ok "StorageClass: ${sc}"
+      return 0
+    fi
+  fi
   choose_storage_class || return 1
-  echo "PVCs will use StorageClass: ${CHOSEN_STORAGE_CLASS}"
+  ui_ok "PVCs will use StorageClass: ${CHOSEN_STORAGE_CLASS}"
 }
 
 # Update/backup entrypoint: reuse saved choice (or STORAGE_CLASS / prompt once).
@@ -569,6 +730,128 @@ apply_manifest() {
   sed -E "s/^([[:space:]]*storageClassName:[[:space:]]*).*/\\1${sc}/" "${file}" | kubectl apply -f -
 }
 
+
+# --- Replica selection (Kubernetes app Deployments) ---
+replicas_file() { echo "${ROOT:-.}/.replicas"; }
+
+save_replicas() {
+  local n="$1"
+  printf '%s\n' "${n}" >"$(replicas_file)"
+  ui_ok "Saved replica count: ${n} ($(replicas_file))"
+}
+
+load_replicas() {
+  local f n
+  f="$(replicas_file)"
+  [[ -f "${f}" ]] || return 1
+  n="$(tr -dc '0-9' <"${f}" || true)"
+  [[ -n "${n}" ]] || return 1
+  printf '%s' "${n}"
+}
+
+# Returns "namespace/deployment" for the user-facing scalable workload.
+k8s_replica_target() {
+  case "$1" in
+    heimdall) echo "heimdall/heimdall" ;;
+    vaultwarden) echo "vaultwarden/vaultwarden" ;;
+    nextcloud) echo "nextcloud/nextcloud" ;;
+    immich) echo "immich/immich-server" ;;
+    *) return 1 ;;
+  esac
+}
+
+k8s_replica_suggestion() {
+  # suggested_count|reason
+  case "$1" in
+    heimdall)
+      echo "1|Heimdall uses a local SQLite DB on a single PVC (RWO) — 1 replica is safest."
+      ;;
+    vaultwarden)
+      echo "1|Vaultwarden uses SQLite on a single PVC (RWO) — 1 replica is safest."
+      ;;
+    nextcloud)
+      echo "1|Nextcloud files PVC is typically RWO; start with 1. Only raise replicas if you know your storage supports multi-attach."
+      ;;
+    immich)
+      echo "1|Immich library PVC is typically RWO; scale the API server carefully. DB/Redis/ML stay at 1."
+      ;;
+    *)
+      echo "1|Default to 1 unless you know the app is safe to scale."
+      ;;
+  esac
+}
+
+current_deploy_replicas() {
+  local ns="$1" deploy="$2"
+  kubectl -n "${ns}" get deploy "${deploy}" -o jsonpath='{.spec.replicas}' 2>/dev/null || true
+}
+
+# configure_k8s_replicas <profile>
+# profile: heimdall|vaultwarden|nextcloud|immich
+configure_k8s_replicas() {
+  local profile="$1"
+  local target ns deploy suggested reason cur def n warn
+  target="$(k8s_replica_target "${profile}")" || {
+    ui_err "Unknown replica profile: ${profile}"
+    return 1
+  }
+  ns="${target%%/*}"
+  deploy="${target##*/}"
+
+  IFS='|' read -r suggested reason <<<"$(k8s_replica_suggestion "${profile}")"
+  def="${suggested}"
+  if cur="$(load_replicas 2>/dev/null || true)" && [[ -n "${cur}" ]]; then
+    def="${cur}"
+  fi
+  cur="$(current_deploy_replicas "${ns}" "${deploy}" || true)"
+  if [[ -n "${cur}" ]]; then
+    def="${cur}"
+  fi
+
+  if [[ -n "${REPLICAS:-}" ]]; then
+    n="${REPLICAS}"
+    ui_info "Using REPLICAS=${n} from environment"
+  else
+    echo
+    ui_info "Replica suggestion for ${profile}: ${UI_BOLD}${suggested}${UI_RESET}"
+    ui_info "${reason}"
+    ui_ask_int n "How many replicas for Deployment/${deploy}?" "${def}" 1 20
+  fi
+
+  if ! [[ "${n}" =~ ^[0-9]+$ ]] || (( n < 1 )); then
+    ui_err "Invalid replica count: ${n}"
+    return 1
+  fi
+
+  if (( n > 1 )); then
+    ui_warn "Replicas > 1 with ReadWriteOnce storage can fail if pods land on different nodes."
+    ui_ask_yn warn "Continue with ${n} replicas?" y
+    [[ "${warn}" == "y" ]] || { ui_info "Keeping 1 replica."; n=1; }
+  fi
+
+  CHOSEN_REPLICAS="${n}"
+  save_replicas "${n}"
+}
+
+apply_saved_replicas() {
+  local profile="$1"
+  local target ns deploy n
+  target="$(k8s_replica_target "${profile}")" || return 1
+  ns="${target%%/*}"
+  deploy="${target##*/}"
+  n="${CHOSEN_REPLICAS:-}"
+  [[ -n "${n}" ]] || n="$(load_replicas || true)"
+  [[ -n "${n}" ]] || n=1
+  if ! kubectl -n "${ns}" get deploy "${deploy}" >/dev/null 2>&1; then
+    ui_warn "Deployment ${ns}/${deploy} not found yet — skip scale"
+    return 0
+  fi
+  ui_run "Scaling ${ns}/${deploy} to ${n} replica(s)" \
+    kubectl -n "${ns}" scale deployment/"${deploy}" --replicas="${n}"
+  CHOSEN_REPLICAS="${n}"
+}
+
+
 # ensure_host_deps <profile> [extra commands...]
 # Profiles:
 #   docker       — Docker Engine + Compose + common tools
@@ -580,7 +863,7 @@ ensure_host_deps() {
   local extras=("$@")
 
   _deps_detect_os
-  echo "Host: ${DEPS_OS_ID} (package manager: ${DEPS_PKG})"
+  ui_info "Host: ${DEPS_OS_ID} (package manager: ${DEPS_PKG})"
 
   # Always useful for HTTPS package/index fetches
   if [[ "${DEPS_PKG}" != "brew" ]] && ! _deps_have update-ca-certificates && [[ -f /etc/debian_version || -f /etc/fedora-release || -f /etc/redhat-release ]]; then
@@ -628,5 +911,5 @@ ensure_host_deps() {
     }
   done
 
-  echo "Host dependencies OK."
+  ui_ok "Host dependencies ready"
 }

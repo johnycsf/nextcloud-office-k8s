@@ -149,6 +149,7 @@ create_backup
 
 echo "==> Applying core manifests..."
 apply_manifest "${ROOT}/deploy.yaml"
+apply_saved_replicas nextcloud
 
 if redis_deployed; then
   echo "==> Redis is present — re-applying deploy-redis.yaml..."
