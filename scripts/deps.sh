@@ -643,7 +643,7 @@ compose_engine() {
       fi
       ;;
     *)
-      compose "$@"
+      docker compose "$@"
       ;;
   esac
 }
