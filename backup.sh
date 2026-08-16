@@ -8,6 +8,8 @@ source "${ROOT}/deps.sh"
 # shellcheck source=lib.sh
 source "${ROOT}/lib.sh"
 cd "$ROOT"
+# shellcheck source=backup-encrypt.sh
+source "${ROOT}/backup-encrypt.sh"
 STACK_ID="nextcloud-office-k8s"
 
 need_rsync() {
@@ -33,6 +35,16 @@ Disaster-recovery backups (also used by ./update.sh for pre-update snapshots int
   --restore     Restore into this deployment from --from.
   --from PATH   Backup root (uses latest/) or a specific snapshots/TIMESTAMP dir.
 
+  --encrypt          After snapshot, also write an age-encrypted .tar.age export
+                     (local hardlink snapshot stays plaintext for incrementals).
+  --export-dir DIR   Where to put *.tar.age (default: DEST/encrypted).
+  --age-recipient R  age1… public key or path to recipients file (repeatable).
+  --age-identity F   Private key file for decrypt (default: ~/.config/johnycsf/backup.age.key).
+  --passphrase       Encrypt export with a passphrase (age -p) instead of a recipient key.
+
+  SHA256SUMS = integrity. age = confidentiality for offsite/USB/NAS copies.
+  Restore: --from may be a snapshot dir/root OR a *.tar.age / *.age export.
+
 Fresh-machine workflow:
   1) Install this stack on the new host (./install.sh) so runtime exists.
   2) ./backup.sh --restore --from /mnt/usb/my-backups
@@ -50,6 +62,12 @@ DEST=""
 FROM=""
 KEEP=""
 
+ENCRYPT="${BACKUP_ENCRYPT:-0}"
+EXPORT_DIR="${BACKUP_EXPORT_DIR:-}"
+ENCRYPT_PASSPHRASE=0
+AGE_RECIPIENTS=()
+AGE_IDENTITY="${BACKUP_AGE_IDENTITY:-}"
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dest)
@@ -60,6 +78,19 @@ while [[ $# -gt 0 ]]; do
       FROM="$2"; shift 2 ;;
     --restore)
       MODE="restore"; shift ;;
+    --encrypt)
+      ENCRYPT=1; shift ;;
+    --export-dir)
+      [[ $# -ge 2 ]] || { echo "--export-dir needs a path" >&2; exit 1; }
+      EXPORT_DIR="$2"; shift 2 ;;
+    --age-recipient)
+      [[ $# -ge 2 ]] || { echo "--age-recipient needs a value" >&2; exit 1; }
+      AGE_RECIPIENTS+=("$2"); shift 2 ;;
+    --age-identity)
+      [[ $# -ge 2 ]] || { echo "--age-identity needs a path" >&2; exit 1; }
+      AGE_IDENTITY="$2"; shift 2 ;;
+    --passphrase)
+      ENCRYPT=1; ENCRYPT_PASSPHRASE=1; shift ;;
     --keep)
       [[ $# -ge 2 ]] || { echo "--keep needs a number" >&2; exit 1; }
       KEEP="$2"; shift 2 ;;
@@ -505,6 +536,7 @@ EOF
   trap - EXIT
   maintenance_off
   seal_snapshot "${SNAP_DIR}"
+  maybe_encrypt_after_seal
   finalize_snapshot "$DEST"
   prune_snapshots "$DEST" "${KEEP}"
   echo "Backup OK. Tip: store on external drive/NAS (hardlinks need one filesystem)."
@@ -514,8 +546,10 @@ do_restore() {
   need kubectl
   need_rsync
   [[ -n "$FROM" ]] || { echo "Provide --from /path" >&2; exit 1; }
-  local snap
-  snap="$(resolve_snapshot_dir "$FROM")"
+  local snap src
+  src="$(prepare_restore_from_arg "$FROM")"
+  trap cleanup_restore_tmp EXIT
+  snap="$(resolve_snapshot_dir "$src")"
   echo "Restoring from: $snap"
   verify_snapshot_integrity "$snap"
   [[ -d "${snap}/files" ]] || { echo "Missing files/" >&2; exit 1; }

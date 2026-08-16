@@ -1,3 +1,7 @@
+## Unreleased
+
+- Optional age-encrypted backup exports (`--encrypt`) for offsite disaster recovery.
+
 # Changelog
 
 All notable changes to this project are documented in this file.

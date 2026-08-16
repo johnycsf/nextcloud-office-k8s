@@ -285,6 +285,9 @@ _deps_packages_for_cmd() {
     rsync)
       echo rsync
       ;;
+    age)
+      echo age
+      ;;
     tar)
       case "${DEPS_PKG}" in
         apt) echo tar ;;
@@ -944,7 +947,7 @@ ${UI_BOLD}What makes this stack different${UI_RESET}
   ${UI_GREEN}•${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/…)
   ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
   ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
-  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (`./backup.sh`)
+  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore; optional age-encrypted offsite exports (`./backup.sh --encrypt`)
   ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
   ${UI_GREEN}•${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
 EOF
@@ -1115,9 +1118,15 @@ manage_menu_docker() {
     1) exec "${ROOT}/install.sh" ;;
     2) exec "${ROOT}/update.sh" ;;
     3)
-      local dest
+      local dest encrypt_yn export_dir
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      exec "${ROOT}/backup.sh" --dest "${dest}"
+      ui_ask_yn encrypt_yn "Also create an age-encrypted export for offsite/USB/NAS?" n
+      if [[ "${encrypt_yn}" == "y" ]]; then
+        ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
+        exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
+      else
+        exec "${ROOT}/backup.sh" --dest "${dest}"
+      fi
       ;;
     4) doctor_docker "${title}" ;;
     5) uninstall_docker_stack "${title}" ;;
@@ -1142,9 +1151,15 @@ manage_menu_k8s() {
     1) exec "${ROOT}/install.sh" ;;
     2) exec "${ROOT}/update.sh" ;;
     3)
-      local dest
+      local dest encrypt_yn export_dir
       ui_ask dest "Backup destination directory" "${ROOT}/backups"
-      exec "${ROOT}/backup.sh" --dest "${dest}"
+      ui_ask_yn encrypt_yn "Also create an age-encrypted export for offsite/USB/NAS?" n
+      if [[ "${encrypt_yn}" == "y" ]]; then
+        ui_ask export_dir "Encrypted export directory" "${dest}/encrypted"
+        exec "${ROOT}/backup.sh" --dest "${dest}" --encrypt --export-dir "${export_dir}"
+      else
+        exec "${ROOT}/backup.sh" --dest "${dest}"
+      fi
       ;;
     4) doctor_k8s "${title}" "${ns}" ;;
     5) uninstall_k8s_stack "${title}" "${ns}" ;;
