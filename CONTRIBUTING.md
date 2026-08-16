@@ -6,6 +6,11 @@ Thanks for wanting to help. These projects are meant to stay simple for homelab 
 
 See [DISCLAIMER.md](DISCLAIMER.md). By using or contributing to this repository, you acknowledge that the author is **not responsible** for any damage, data loss, outages, security issues, or other consequences from using this software.
 
+
+### Credits
+
+If your change adds a new upstream app, library, or CLI tool (for example gum, age, or a new container image), update [CREDITS.md](CREDITS.md) in the same pull request.
+
 ## Reporting bugs
 
 If you encounter an error or unexpected behavior, please use GitHub (that is the supported contribution path):
