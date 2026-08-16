@@ -33,11 +33,11 @@ Do not expect private email or DM troubleshooting. Bug reports and fixes belong 
 
 1. Develop on `testing` (or merge feature branches into `testing`).
 2. When you find a bug, **open a GitHub Issue** first (or as soon as you have a clear repro) — even if you already know the fix. Search for duplicates; include commands, errors, OS, and Docker vs Podman.
-3. Fix on `testing`, reference the issue in the commit message / CHANGELOG (for example `Fixes #12`).
+3. Fix on `testing`, reference the issue in the commit message / CHANGELOG (for example `Fixes #12`). Prefer several small commits on `testing` while iterating.
 4. Test on a real machine until confident.
 5. Update **CHANGELOG.md** in the same change set.
-6. Open a **Pull Request**: `testing` → `main` (changelog + verification note + linked issues).
-7. Merge only after the PR looks good; close linked issues when the fix is verified (on `testing` or after merge to `main`).
+6. **Batch related fixes into one Pull Request** `testing` → `main` (changelog + verification note + linked issues). Do **not** open/merge a separate PR for every tiny fix discovered in the same session or related debugging pass — accumulate on `testing`, verify, then ship one PR. Urgent security or data-loss blockers may still go alone.
+7. Merge only after the PR looks good; close linked issues when the fix is verified (on `testing` or after merge to `main`). After merge, fast-forward `testing` to `main` so the tip does not drift.
 
 External contributors can still open PRs from a fork/feature branch; maintainers may land those on `testing` first when the change needs live verification.
 
