@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/) where tagged releases exist.
 
 ## [Unreleased]
+- Clarify that `main` stays the GitHub default; log bugs as Issues during testing.
 - Document `testing` → `main` PR workflow (verify first, include CHANGELOG).
 - Ensure rootless Podman API socket (`podman.socket` + linger) before `podman compose`.
 - Fix `compose_engine` Docker path (was recursively calling itself instead of `docker compose`).
