@@ -663,6 +663,21 @@ load_container_engine() {
   export CONTAINER_ENGINE
 }
 
+container_engine_label() {
+  # Human label for UI: Docker | Podman (from remembered CONTAINER_ENGINE).
+  load_container_engine
+  case "${CONTAINER_ENGINE}" in
+    podman) printf '%s\n' "Podman" ;;
+    *) printf '%s\n' "Docker" ;;
+  esac
+}
+
+compose_stack_subtitle() {
+  # compose_stack_subtitle "official images + Postgres"
+  printf '%s Compose · %s\n' "$(container_engine_label)" "$1"
+}
+
+
 need_container_engine() {
   # Require the runtime matching CONTAINER_ENGINE in .env (not always docker).
   load_container_engine
@@ -1443,9 +1458,10 @@ EOF
 
 doctor_docker() {
   local title="${1:-App}"
-  ui_banner "${title}" "Doctor · Docker stack health"
+  load_container_engine
+  ui_banner "${title}" "Doctor · $(container_engine_label) stack health"
   if [[ ! -f "${ROOT}/docker-compose.yml" && ! -f "${ROOT}/compose.yaml" ]]; then
-    ui_err "No docker-compose.yml in ${ROOT}"
+    ui_err "No docker-compose.yml / compose.yaml in ${ROOT}"
     return 1
   fi
 
@@ -1557,7 +1573,8 @@ confirm_destructive() {
 
 uninstall_docker_stack() {
   local title="$1"
-  ui_banner "${title}" "Uninstall · Docker"
+  load_container_engine
+  ui_banner "${title}" "Uninstall · $(container_engine_label)"
   ui_warn "This stops containers. You choose whether to delete ./data"
   confirm_destructive "uninstall" || { ui_info "Cancelled."; return 1; }
 
