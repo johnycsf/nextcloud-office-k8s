@@ -653,6 +653,33 @@ compose() {
   compose_engine "$@"
 }
 
+
+ensure_host_owned_dir() {
+  # ensure_host_owned_dir DIR [DIR...]
+  # Docker/Podman bind mounts are often created as root; make them writable for the
+  # invoking user so backup/restore rsync from the host does not fail with EACCES.
+  local d uid gid
+  uid="$(id -u)"
+  gid="$(id -g)"
+  for d in "$@"; do
+    [[ -n "${d}" ]] || continue
+    mkdir -p "${d}"
+    if [[ -O "${d}" ]] && [[ -w "${d}" ]]; then
+      # Fast path: dir owned by us; still fix nested root-owned children if present.
+      if ! find "${d}" -maxdepth 4 \( ! -user "${uid}" -o ! -writable \) 2>/dev/null | head -1 | grep -q .; then
+        continue
+      fi
+    fi
+    if command -v sudo >/dev/null 2>&1; then
+      echo "==> Fixing ownership on ${d} (container runtime may have created root-owned files)..."
+      sudo chown -R "${uid}:${gid}" "${d}" || true
+    else
+      echo "Warning: ${d} may not be writable by $(id -un) and sudo is unavailable." >&2
+    fi
+  done
+}
+
+
 configure_container_engine() {
   # Prompt once (or keep existing). Writes CONTAINER_ENGINE into .env.
   local current choice
