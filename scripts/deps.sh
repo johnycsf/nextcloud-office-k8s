@@ -137,10 +137,31 @@ ui_ask_int() {
 }
 
 ui_run() {
-  # ui_run "Label" cmd...
+  # ui_run [--stream] "Label" cmd...
+  # Default: hide command output until done/fail (keeps menus tidy).
+  # --stream: show live stdout/stderr (use for long pulls/builds).
+  local stream=0
+  if [[ "${1:-}" == "--stream" ]]; then
+    stream=1
+    shift
+  fi
   local label="$1"
   shift
   local logfile status
+  if [[ "${stream}" -eq 1 ]]; then
+    echo "${UI_DIM}…${UI_RESET} ${label}"
+    ui_info "Showing live progress (large images can take several minutes)…"
+    set +e
+    "$@"
+    status=$?
+    set -e
+    if [[ "${status}" -eq 0 ]]; then
+      ui_ok "${label} done"
+      return 0
+    fi
+    ui_err "${label} failed"
+    return "${status}"
+  fi
   logfile="$(mktemp)"
   echo -n "${UI_DIM}…${UI_RESET} ${label} "
   set +e

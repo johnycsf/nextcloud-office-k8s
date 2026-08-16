@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/) where tagged releases exist.
 
 ## [Unreleased]
+- Show live progress for compose pull/build (`ui_run --stream`) so long image downloads do not look frozen.
 - Fix features blurb: backticks around CONTAINER_ENGINE ran it as a shell command.
 - Control-center banner uses remembered Docker/Podman engine label.
 - UI polish: install/doctor/uninstall banners reflect Docker vs Podman from `CONTAINER_ENGINE`.
