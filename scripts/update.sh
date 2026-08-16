@@ -173,7 +173,7 @@ echo "==> Pruning unused images on this machine (dangling/unused only)..."
 if command -v k3s >/dev/null 2>&1; then
   sudo k3s crictl rmi --prune 2>/dev/null || echo "(skipped k3s prune — need sudo or crictl)"
 elif command -v docker >/dev/null 2>&1; then
-  docker image prune -f
+  container_image_prune
 fi
 
 echo

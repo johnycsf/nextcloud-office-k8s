@@ -26,6 +26,22 @@ If you encounter an error or unexpected behavior, please use GitHub (that is the
 
 Do not expect private email or DM troubleshooting. Bug reports and fixes belong on GitHub Issues and Pull Requests.
 
+## Maintainer branch workflow
+
+- **`main`** — stable **GitHub default** branch (what `git clone` checks out for users). **Never** set `testing` as the repository default — it may contain untested changes.
+- **`testing`** — integration branch for maintainers only. Verify here before merging to `main`.
+
+1. Develop on `testing` (or merge feature branches into `testing`).
+2. When you find a bug, **open a GitHub Issue** first (or as soon as you have a clear repro) — even if you already know the fix. Search for duplicates; include commands, errors, OS, and Docker vs Podman.
+3. Fix on `testing`, reference the issue in the commit message / CHANGELOG (for example `Fixes #12`).
+4. Test on a real machine until confident.
+5. Update **CHANGELOG.md** in the same change set.
+6. Open a **Pull Request**: `testing` → `main` (changelog + verification note + linked issues).
+7. Merge only after the PR looks good; close linked issues when the fix is verified (on `testing` or after merge to `main`).
+
+External contributors can still open PRs from a fork/feature branch; maintainers may land those on `testing` first when the change needs live verification.
+
+
 ## How to contribute (Pull Requests)
 
 1. Fork the repository

@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/) where tagged releases exist.
 
 ## [Unreleased]
+- UI polish: install/doctor/uninstall banners reflect Docker vs Podman from `CONTAINER_ENGINE`.
+- Remember `CONTAINER_ENGINE` from `.env` for all manage actions; preserve it (and host ports) across restore; stop hard-requiring `docker` when Podman is selected.
+- Podman: prefer `podman-compose` over `podman compose`/docker-compose plugin; silence provider banner.
+- Clarify that `main` stays the GitHub default; log bugs as Issues during testing.
+- Document `testing` → `main` PR workflow (verify first, include CHANGELOG).
 - Ensure rootless Podman API socket (`podman.socket` + linger) before `podman compose`.
 - Fix `compose_engine` Docker path (was recursively calling itself instead of `docker compose`).
 

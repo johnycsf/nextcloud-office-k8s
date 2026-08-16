@@ -291,7 +291,7 @@ host_tcp_port_in_use() {
 
 this_compose_publishes_port() {
   local port="$1"
-  command -v docker >/dev/null 2>&1 || return 1
+  # Uses remembered CONTAINER_ENGINE via compose(); no hard docker requirement.
   compose ps --format '{{.Ports}}' 2>/dev/null \
     | grep -E "(^|[, ])([0-9.]+|\[::\]|\*|0\.0\.0\.0):${port}->" >/dev/null 2>&1
 }
@@ -633,12 +633,15 @@ compose_engine() {
   # Low-level compose runner for the selected engine.
   case "$(_container_engine)" in
     podman)
-      if podman compose version >/dev/null 2>&1; then
-        podman compose "$@"
-      elif command -v podman-compose >/dev/null 2>&1; then
+      # Prefer podman-compose (Podman-native). Plain `podman compose` often wraps
+      # the docker-compose CLI plugin and prints a banner about docker.
+      if command -v podman-compose >/dev/null 2>&1; then
         podman-compose "$@"
+      elif podman compose version >/dev/null 2>&1; then
+        # Still Podman socket; silence the external-provider warning.
+        PODMAN_COMPOSE_WARNING_LOGS=false podman compose "$@"
       else
-        echo "Podman Compose is required (podman compose or podman-compose)." >&2
+        echo "Podman Compose is required (podman-compose or podman compose)." >&2
         return 1
       fi
       ;;
@@ -652,6 +655,94 @@ compose_engine() {
 compose() {
   compose_engine "$@"
 }
+
+
+load_container_engine() {
+  # Read remembered engine from .env (set at install) into the current shell.
+  CONTAINER_ENGINE="$(_container_engine)"
+  export CONTAINER_ENGINE
+}
+
+container_engine_label() {
+  # Human label for UI: Docker | Podman (from remembered CONTAINER_ENGINE).
+  load_container_engine
+  case "${CONTAINER_ENGINE}" in
+    podman) printf '%s\n' "Podman" ;;
+    *) printf '%s\n' "Docker" ;;
+  esac
+}
+
+compose_stack_subtitle() {
+  # compose_stack_subtitle "official images + Postgres"
+  printf '%s Compose · %s\n' "$(container_engine_label)" "$1"
+}
+
+
+need_container_engine() {
+  # Require the runtime matching CONTAINER_ENGINE in .env (not always docker).
+  load_container_engine
+  case "${CONTAINER_ENGINE}" in
+    podman)
+      if ! command -v podman >/dev/null 2>&1; then
+        echo "Missing: podman (CONTAINER_ENGINE=podman in .env — re-run ./manage.sh install or install Podman)." >&2
+        return 1
+      fi
+      _deps_ensure_podman_api >/dev/null 2>&1 || true
+      if ! command -v podman-compose >/dev/null 2>&1 && ! podman compose version >/dev/null 2>&1; then
+        echo "Missing: podman-compose (preferred) or podman compose." >&2
+        return 1
+      fi
+      ;;
+    *)
+      if ! command -v docker >/dev/null 2>&1; then
+        echo "Missing: docker (CONTAINER_ENGINE=docker in .env)." >&2
+        return 1
+      fi
+      if ! docker compose version >/dev/null 2>&1; then
+        echo "Missing: docker compose." >&2
+        return 1
+      fi
+      ;;
+  esac
+}
+
+container_image_prune() {
+  load_container_engine
+  case "${CONTAINER_ENGINE}" in
+    podman) podman image prune -f "$@" ;;
+    *) docker image prune -f "$@" ;;
+  esac
+}
+
+# Host-side install choices that must survive restoring .env from a backup snapshot.
+_HOST_INSTALL_ENV_KEYS=(CONTAINER_ENGINE IMMICH_PORT HTTP_PORT PORT NEXTCLOUD_PORT COLLABORA_PORT)
+
+save_host_install_env() {
+  _HOST_INSTALL_ENV_SAVED=()
+  local k v
+  for k in "${_HOST_INSTALL_ENV_KEYS[@]}"; do
+    v="$(env_file_get "${k}" "" 2>/dev/null || true)"
+    [[ -n "${v}" ]] && _HOST_INSTALL_ENV_SAVED+=("${k}=${v}")
+  done
+}
+
+apply_host_install_env() {
+  # Re-apply saved host choices after a snapshot .env overwrite.
+  local kv k v
+  for kv in "${_HOST_INSTALL_ENV_SAVED[@]:-}"; do
+    k="${kv%%=*}"
+    v="${kv#*=}"
+    [[ -n "${k}" ]] || continue
+    env_file_set "${k}" "${v}"
+    printf -v "${k}" '%s' "${v}"
+    export "${k?}"
+  done
+  load_container_engine
+  if [[ "${#_HOST_INSTALL_ENV_SAVED[@]}" -gt 0 ]]; then
+    echo "==> Preserved host install choices: ${_HOST_INSTALL_ENV_SAVED[*]}"
+  fi
+}
+
 
 
 ensure_host_owned_dir() {
@@ -794,8 +885,9 @@ _deps_ensure_podman() {
 
   _deps_ensure_podman_api || return 1
 
-  if ! podman compose version >/dev/null 2>&1 && ! _deps_have podman-compose; then
-    echo "Podman Compose missing — installing podman-compose..."
+  # Prefer the podman-compose package (avoids docker-compose plugin via `podman compose`).
+  if ! _deps_have podman-compose; then
+    echo "Installing podman-compose (Podman-native Compose)..."
     case "${DEPS_PKG}" in
       dnf|yum|apt|pacman|zypper) _deps_pkg_install podman-compose || true ;;
       pip|pip3) ;;
@@ -803,9 +895,15 @@ _deps_ensure_podman() {
     esac
   fi
 
-  if ! podman compose version >/dev/null 2>&1 && ! _deps_have podman-compose; then
-    echo "podman compose / podman-compose is required but not available." >&2
+  if ! _deps_have podman-compose && ! podman compose version >/dev/null 2>&1; then
+    echo "podman-compose (preferred) or podman compose is required but not available." >&2
     return 1
+  fi
+
+  if _deps_have podman-compose; then
+    echo "Using podman-compose for Compose under Podman."
+  elif podman compose version >/dev/null 2>&1; then
+    echo "podman-compose not installed — falling back to podman compose (may wrap docker-compose plugin; warnings silenced)."
   fi
 }
 
@@ -1360,9 +1458,10 @@ EOF
 
 doctor_docker() {
   local title="${1:-App}"
-  ui_banner "${title}" "Doctor · Docker stack health"
+  load_container_engine
+  ui_banner "${title}" "Doctor · $(container_engine_label) stack health"
   if [[ ! -f "${ROOT}/docker-compose.yml" && ! -f "${ROOT}/compose.yaml" ]]; then
-    ui_err "No docker-compose.yml in ${ROOT}"
+    ui_err "No docker-compose.yml / compose.yaml in ${ROOT}"
     return 1
   fi
 
@@ -1474,7 +1573,8 @@ confirm_destructive() {
 
 uninstall_docker_stack() {
   local title="$1"
-  ui_banner "${title}" "Uninstall · Docker"
+  load_container_engine
+  ui_banner "${title}" "Uninstall · $(container_engine_label)"
   ui_warn "This stops containers. You choose whether to delete ./data"
   confirm_destructive "uninstall" || { ui_info "Cancelled."; return 1; }
 
