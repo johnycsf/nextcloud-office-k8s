@@ -633,12 +633,15 @@ compose_engine() {
   # Low-level compose runner for the selected engine.
   case "$(_container_engine)" in
     podman)
-      if podman compose version >/dev/null 2>&1; then
-        podman compose "$@"
-      elif command -v podman-compose >/dev/null 2>&1; then
+      # Prefer podman-compose (Podman-native). Plain `podman compose` often wraps
+      # the docker-compose CLI plugin and prints a banner about docker.
+      if command -v podman-compose >/dev/null 2>&1; then
         podman-compose "$@"
+      elif podman compose version >/dev/null 2>&1; then
+        # Still Podman socket; silence the external-provider warning.
+        PODMAN_COMPOSE_WARNING_LOGS=false podman compose "$@"
       else
-        echo "Podman Compose is required (podman compose or podman-compose)." >&2
+        echo "Podman Compose is required (podman-compose or podman compose)." >&2
         return 1
       fi
       ;;
@@ -794,8 +797,9 @@ _deps_ensure_podman() {
 
   _deps_ensure_podman_api || return 1
 
-  if ! podman compose version >/dev/null 2>&1 && ! _deps_have podman-compose; then
-    echo "Podman Compose missing — installing podman-compose..."
+  # Prefer the podman-compose package (avoids docker-compose plugin via `podman compose`).
+  if ! _deps_have podman-compose; then
+    echo "Installing podman-compose (Podman-native Compose)..."
     case "${DEPS_PKG}" in
       dnf|yum|apt|pacman|zypper) _deps_pkg_install podman-compose || true ;;
       pip|pip3) ;;
@@ -803,9 +807,15 @@ _deps_ensure_podman() {
     esac
   fi
 
-  if ! podman compose version >/dev/null 2>&1 && ! _deps_have podman-compose; then
-    echo "podman compose / podman-compose is required but not available." >&2
+  if ! _deps_have podman-compose && ! podman compose version >/dev/null 2>&1; then
+    echo "podman-compose (preferred) or podman compose is required but not available." >&2
     return 1
+  fi
+
+  if _deps_have podman-compose; then
+    echo "Using podman-compose for Compose under Podman."
+  elif podman compose version >/dev/null 2>&1; then
+    echo "podman-compose not installed — falling back to podman compose (may wrap docker-compose plugin; warnings silenced)."
   fi
 }
 
