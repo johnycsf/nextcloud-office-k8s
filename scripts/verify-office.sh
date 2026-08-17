@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke-test Nextcloud ↔ Collabora wiring. Exit 0 only if checks pass.
+# Smoke-test Nextcloud <-> Collabora wiring. Exit 0 only if checks pass.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -49,13 +49,13 @@ if kubectl -n "$NS" run "${VERIFY_POD}" --rm --restart=Never --image=curlimages/
   --command -- curl -fsS --max-time 20 \
   --resolve "${NC_HOST}:80:${NC_CLUSTER_IP}" "${NC_URL}/status.php" \
   | grep -q 'installed'; then
-  pass "Nextcloud is reachable the way Collabora will call it (${NC_HOST} → ${NC_CLUSTER_IP})"
+  pass "Nextcloud is reachable the way Collabora will call it (${NC_HOST} -> ${NC_CLUSTER_IP})"
 else
-  fail "Nextcloud not reachable via ${NC_HOST}→${NC_CLUSTER_IP} (Collabora WOPI callbacks will fail)"
+  fail "Nextcloud not reachable via ${NC_HOST}->${NC_CLUSTER_IP} (Collabora WOPI callbacks will fail)"
 fi
 
 if ! occ status 2>/dev/null | grep -q 'installed: true'; then
-  fail "Nextcloud is not installed yet — finish the web wizard, then re-run configure-office.sh"
+  fail "Nextcloud is not installed yet - finish the web wizard, then re-run configure-office.sh"
   exit 1
 fi
 pass "Nextcloud is installed"
@@ -64,7 +64,7 @@ DBTYPE="$(occ config:system:get dbtype 2>/dev/null || true)"
 if [[ "${DBTYPE}" == "mysql" ]]; then
   pass "Database is MariaDB/MySQL (dbtype=${DBTYPE})"
 else
-  fail "Expected MariaDB/MySQL (dbtype=mysql), got: ${DBTYPE:-empty} — wipe PVCs and reinstall with MYSQL_* auto-config"
+  fail "Expected MariaDB/MySQL (dbtype=mysql), got: ${DBTYPE:-empty} - wipe PVCs and reinstall with MYSQL_* auto-config"
 fi
 
 if kubectl -n "$NS" get deploy db >/dev/null 2>&1; then
@@ -98,7 +98,7 @@ PUBLIC_WOPI="$(occ config:app:get richdocuments public_wopi_url 2>/dev/null || t
 if [[ -n "${WOPI_URL}" ]]; then
   pass "richdocuments is configured"
 else
-  fail "richdocuments wopi_url is empty — run ./scripts/configure-office.sh"
+  fail "richdocuments wopi_url is empty - run ./scripts/configure-office.sh"
 fi
 
 if [[ "${WOPI_URL}" == "${COLLABORA_INTERNAL_URL}" ]]; then
@@ -115,7 +115,7 @@ fi
 
 ENABLED_APPS="$(occ app:list --enabled 2>/dev/null || true)"
 if printf '%s\n' "${ENABLED_APPS}" | grep -qi 'richdocumentscode'; then
-  fail "Built-in richdocumentscode is enabled — prefer the external Collabora service in this repo"
+  fail "Built-in richdocumentscode is enabled - prefer the external Collabora service in this repo"
 else
   pass "Built-in richdocumentscode is not enabled"
 fi
@@ -123,7 +123,7 @@ fi
 echo
 if [[ "${FAIL}" -eq 0 ]]; then
   echo "All checks passed."
-  echo "Manual check: open ${NC_URL} → + New → Document"
+  echo "Manual check: open ${NC_URL} -> + New -> Document"
   exit 0
 fi
 

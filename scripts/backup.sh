@@ -38,12 +38,12 @@ Disaster-recovery backups (also used by ./manage.sh update for pre-update snapsh
   --archive FMT      After snapshot, also write a compressed export (tar.gz|tar.xz|zip).
                      Local hardlink snapshots stay uncompressed for --link-dest.
   --archive-password Password-protect that archive:
-                       zip   → zip -e (ZipCrypto; casual protection)
-                       tar.* → compress then age -p (strong passphrase)
+                       zip   -> zip -e (ZipCrypto; casual protection)
+                       tar.* -> compress then age -p (strong passphrase)
   --encrypt          Advanced: age-encrypted .tar.age export (recipient key).
   --export-dir DIR   Where to put exports (default: DEST/exports for --archive,
                      DEST/encrypted for --encrypt).
-  --age-recipient R  age1… public key or path to recipients file (repeatable).
+  --age-recipient R  age1... public key or path to recipients file (repeatable).
   --age-identity F   Private key file for decrypt (default: ~/.config/johnycsf/backup.age.key).
   --passphrase       With --encrypt: age -p instead of a recipient key.
 
@@ -57,8 +57,8 @@ Fresh-machine workflow:
   3) Script replaces data/secrets and finishes app-specific repair (e.g. Nextcloud scan).
 
 Database safety:
-  MariaDB/Nextcloud  — logical dump (--single-transaction), never live datadir copy.
-  SQLite apps       — service stopped/scaled down, WAL checkpoint, then file copy.
+  MariaDB/Nextcloud  - logical dump (--single-transaction), never live datadir copy.
+  SQLite apps       - service stopped/scaled down, WAL checkpoint, then file copy.
   Incremental rsync applies to files; each MariaDB dump is a full verified SQL file.
 EOF
 }
@@ -237,7 +237,7 @@ verify_mariadb_dump() {
     return 1
   fi
   if ! grep -qE 'CREATE TABLE|INSERT INTO' "$f"; then
-    echo "SQL dump has no CREATE TABLE/INSERT INTO — refusing: $f" >&2
+    echo "SQL dump has no CREATE TABLE/INSERT INTO - refusing: $f" >&2
     return 1
   fi
   local bytes
@@ -264,7 +264,7 @@ seal_snapshot() {
   local snap="$1"
   echo "==> Sealing snapshot with SHA256 manifests..."
   if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
-    echo "WARNING: sha256sum/shasum not found — snapshot will lack integrity key." >&2
+    echo "WARNING: sha256sum/shasum not found - snapshot will lack integrity key." >&2
     return 0
   fi
   (
@@ -307,12 +307,12 @@ verify_snapshot_integrity() {
   local warn=0
   echo "==> Checking snapshot integrity (SHA256)..."
   if [[ ! -f "${snap}/SHA256SUMS" ]]; then
-    echo "WARNING: No SHA256SUMS manifest — cannot verify integrity (legacy or incomplete backup)." >&2
+    echo "WARNING: No SHA256SUMS manifest - cannot verify integrity (legacy or incomplete backup)." >&2
     echo "         Restore will continue, but corruption cannot be ruled out." >&2
     return 0
   fi
   if ! command -v sha256sum >/dev/null 2>&1; then
-    echo "WARNING: sha256sum not found — skipping per-file check." >&2
+    echo "WARNING: sha256sum not found - skipping per-file check." >&2
     warn=1
   else
     local out
@@ -321,7 +321,7 @@ verify_snapshot_integrity() {
     local rc=$?
     set -e
     if [[ "$rc" -ne 0 ]]; then
-      echo "WARNING: SHA256 file verification FAILED — integrity is lost; restore may cause issues." >&2
+      echo "WARNING: SHA256 file verification FAILED - integrity is lost; restore may cause issues." >&2
       printf '%s
 ' "$out" | grep -v ': OK$' | head -n 40 >&2 || true
       warn=1
@@ -334,7 +334,7 @@ verify_snapshot_integrity() {
     echo "WARNING: META.txt has no snapshot_sha256 key." >&2
     warn=1
   elif [[ "$actual" != "$expected" ]]; then
-    echo "WARNING: SHA256SUMS does not match META snapshot_sha256 — integrity is lost; restore may cause issues." >&2
+    echo "WARNING: SHA256SUMS does not match META snapshot_sha256 - integrity is lost; restore may cause issues." >&2
     echo "         expected=${expected}" >&2
     echo "         actual=${actual}" >&2
     warn=1
@@ -414,7 +414,7 @@ occ_files_scan_with_progress() {
   if (( total > 0 )); then
     echo "    Estimated entries under data/: ${total}"
   else
-    echo "    Could not pre-count entries — showing per-user progress when available."
+    echo "    Could not pre-count entries - showing per-user progress when available."
   fi
   print_scan_pct "$label" 0 "$total"
 
@@ -458,7 +458,7 @@ post_restore_nextcloud() {
   occ db:add-missing-primary-keys || true
   occ maintenance:repair --include-expensive || true
   occ_files_scan_with_progress "files:scan" files:scan --all || {
-    echo "WARNING: files:scan reported an error — check output above." >&2
+    echo "WARNING: files:scan reported an error - check output above." >&2
   }
   echo "==> Scanning app data..."
   occ files:scan-app-data || true
@@ -572,7 +572,7 @@ do_restore() {
 
   if [[ ! -f "${snap}/nextcloud-db.sql" ]]; then
     if [[ "${FORCE_FILES_ONLY:-}" == "yes" ]]; then
-      echo "FORCE_FILES_ONLY=yes — restoring files without DB (dangerous)." >&2
+      echo "FORCE_FILES_ONLY=yes - restoring files without DB (dangerous)." >&2
     else
       echo "Refusing restore: no nextcloud-db.sql in snapshot." >&2
       exit 1
@@ -618,7 +618,7 @@ EOF
     if ! kubectl -n "$NS" exec -i "${dbpod}" -- \
         mariadb -u"${user}" -p"${pass}" "${db}" \
         <"${snap}/nextcloud-db.sql"; then
-      echo "SQL IMPORT FAILED — leaving Nextcloud scaled to 0. Fix dump and retry." >&2
+      echo "SQL IMPORT FAILED - leaving Nextcloud scaled to 0. Fix dump and retry." >&2
       exit 1
     fi
     echo "    SQL import completed."

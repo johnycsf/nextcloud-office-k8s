@@ -72,7 +72,7 @@ nc_fetch() {
 }
 
 require_longhorn() {
-  # Back-compat alias — storage is chosen at install time (.storage-class).
+  # Back-compat alias - storage is chosen at install time (.storage-class).
   require_storage_class
 }
 
@@ -137,7 +137,7 @@ redis_deployed() {
 apply_optional_redis() {
   if [[ "${WITH_REDIS:-0}" -ne 1 ]]; then
     if redis_deployed; then
-      echo "Redis Deployment already present — leaving it enabled."
+      echo "Redis Deployment already present - leaving it enabled."
       kubectl -n "$NS" set env deployment/nextcloud REDIS_HOST=redis >/dev/null
     else
       echo "Redis skipped (pass --include-redis to enable)."
@@ -158,7 +158,7 @@ apply_optional_redis() {
 
 refuse_legacy_nextcloud_cluster() {
   if [[ "${I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL:-}" == "yes" ]]; then
-    echo "Override set: I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL=yes — continuing."
+    echo "Override set: I_UNDERSTAND_THIS_IS_A_FRESH_INSTALL=yes - continuing."
     return 0
   fi
   if ! kubectl -n "$NS" get deploy nextcloud >/dev/null 2>&1; then
@@ -170,7 +170,7 @@ refuse_legacy_nextcloud_cluster() {
     reason="Nextcloud Deployment still uses LinuxServer image (${img})"
   fi
   if kubectl -n "$NS" get deploy nextcloud >/dev/null 2>&1 && ! kubectl -n "$NS" get deploy db >/dev/null 2>&1; then
-    # Installed before MariaDB was added — likely SQLite
+    # Installed before MariaDB was added - likely SQLite
     if occ status 2>/dev/null | grep -q 'installed: true'; then
       local dbtype
       dbtype="$(occ config:system:get dbtype 2>/dev/null || true)"
@@ -195,7 +195,7 @@ refuse_legacy_nextcloud_cluster() {
 Refusing to continue: ${reason}.
 
 git pull alone is safe. Re-applying current manifests is NOT an automatic
-SQLite→MariaDB or LinuxServer→official migration.
+SQLite->MariaDB or LinuxServer->official migration.
 
 See BREAKING-CHANGES.md
 
