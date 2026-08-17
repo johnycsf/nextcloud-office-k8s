@@ -350,21 +350,89 @@ ensure_host_firewall_tcp_port() {
   ui_info "Run: sudo firewall-cmd --permanent --add-port=${port}/tcp && sudo firewall-cmd --reload"
 }
 
+
+unprivileged_port_start() {
+  # Lowest TCP port a non-root process may bind (sysctl; usually 1024).
+  local n
+  n="$(sysctl -n net.ipv4.ip_unprivileged_port_start 2>/dev/null || true)"
+  [[ "${n}" =~ ^[0-9]+$ ]] || n=1024
+  printf '%s\n' "${n}"
+}
+
+rootless_podman_bind_restricted() {
+  # Rootless Podman cannot publish host ports below unprivileged_port_start.
+  load_container_engine
+  [[ "${CONTAINER_ENGINE}" == podman ]] || return 1
+  [[ "${EUID}" -ne 0 ]] || return 1
+  return 0
+}
+
+port_is_privileged() {
+  local port="$1" start
+  [[ "${port}" =~ ^[0-9]+$ ]] || return 1
+  start="$(unprivileged_port_start)"
+  (( port < start ))
+}
+
+suggest_unprivileged_port() {
+  # Map common privileged defaults to well-known high ports.
+  local port="$1" start suggested
+  start="$(unprivileged_port_start)"
+  case "${port}" in
+    80) suggested=8080 ;;
+    443) suggested=8443 ;;
+    *) suggested="${port}" ;;
+  esac
+  if [[ "${suggested}" =~ ^[0-9]+$ ]] && (( suggested < start )); then
+    suggested="${start}"
+  fi
+  printf '%s\n' "${suggested}"
+}
+
+adjust_port_for_rootless_podman() {
+  # Echo a usable host port; warn if we remapped a privileged default.
+  local port="$1" label="$2" suggested
+  if ! rootless_podman_bind_restricted; then
+    printf '%s\n' "${port}"
+    return 0
+  fi
+  if ! port_is_privileged "${port}"; then
+    printf '%s\n' "${port}"
+    return 0
+  fi
+  suggested="$(suggest_unprivileged_port "${port}")"
+  ui_warn "Rootless Podman cannot publish host port ${port} (need >= $(unprivileged_port_start))."
+  ui_info "Using ${suggested} for ${label}. Pick another high port if that is taken."
+  printf '%s\n' "${suggested}"
+}
+
 configure_host_port() {
   # configure_host_port ENV_KEY "Human label" default
   # Writes KEY=port into .env and exports KEY for the current shell.
   local key="$1" label="$2" default="$3"
-  local current chosen keep
+  local current chosen keep min_port=1 start
 
+  load_container_engine
   current="$(env_file_get "${key}" "${default}")"
   [[ -n "${current}" ]] || current="${default}"
+  current="$(adjust_port_for_rootless_podman "${current}" "${label}")"
+  default="${current}"
+  if rootless_podman_bind_restricted; then
+    start="$(unprivileged_port_start)"
+    min_port="${start}"
+  fi
 
   if [[ "${SKIP_PORT_PROMPTS:-}" == "1" ]] || [[ ! -t 0 ]]; then
+    if rootless_podman_bind_restricted && port_is_privileged "${current}"; then
+      ui_err "Host port ${current} (${label} / ${key}) is below ${min_port}; rootless Podman cannot bind it."
+      ui_info "Set ${key} to a free port >= ${min_port} in .env, or re-run interactively."
+      return 1
+    fi
     if port_conflict_with_others "${current}"; then
       ui_err "Host port ${current} (${label} / ${key}) is already in use"
       ui_info "Free the port, set ${key} to a free value in .env, or re-run interactively."
       if [[ "${FORCE_PORT_IN_USE:-}" == "1" ]]; then
-        ui_warn "FORCE_PORT_IN_USE=1 — continuing anyway"
+        ui_warn "FORCE_PORT_IN_USE=1 - continuing anyway"
       else
         return 1
       fi
@@ -379,17 +447,26 @@ configure_host_port() {
   fi
 
   echo
-  ui_info "${label} — host port (default ${current})"
+  ui_info "${label} - host port (default ${current})"
   ui_choose keep "Host port for ${label}"     "Use default/current (${current})"     "Choose a different port"
   if [[ "${keep}" == Use* ]]; then
     chosen="${current}"
   else
-    ui_ask_int chosen "Enter host port for ${label}" "${current}" 1 65535
+    ui_ask_int chosen "Enter host port for ${label}" "${current}" "${min_port}" 65535
   fi
 
-  while port_conflict_with_others "${chosen}"; do
-    ui_warn "Port ${chosen} is already in use on this host"
-    ui_ask_int chosen "Pick a different host port for ${label}" "${default}" 1 65535
+  while true; do
+    if rootless_podman_bind_restricted && port_is_privileged "${chosen}"; then
+      ui_warn "Rootless Podman cannot bind port ${chosen} (need >= ${min_port})"
+      ui_ask_int chosen "Pick a host port >= ${min_port} for ${label}" "$(suggest_unprivileged_port "${chosen}")" "${min_port}" 65535
+      continue
+    fi
+    if port_conflict_with_others "${chosen}"; then
+      ui_warn "Port ${chosen} is already in use on this host"
+      ui_ask_int chosen "Pick a different host port for ${label}" "${default}" "${min_port}" 65535
+      continue
+    fi
+    break
   done
 
   env_file_set "${key}" "${chosen}"
