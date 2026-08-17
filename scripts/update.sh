@@ -65,7 +65,7 @@ ask_backup_retention() {
     return 0
   fi
   if [[ ! -t 0 ]]; then
-    echo "No interactive terminal — keeping backup at ${dir}"
+    echo "No interactive terminal - keeping backup at ${dir}"
     local keep="${DEFAULT_KEEP}"
     [[ -f "${KEEP_FILE}" ]] && keep="$(tr -dc '0-9' <"${KEEP_FILE}" || true)"
     [[ -z "${keep}" ]] && keep="${DEFAULT_KEEP}"
@@ -152,7 +152,7 @@ apply_manifest "${ROOT}/deploy.yaml"
 apply_saved_replicas nextcloud
 
 if redis_deployed; then
-  echo "==> Redis is present — re-applying deploy-redis.yaml..."
+  echo "==> Redis is present - re-applying deploy-redis.yaml..."
   apply_manifest "${ROOT}/deploy-redis.yaml"
 fi
 
@@ -171,7 +171,7 @@ fi
 
 echo "==> Pruning unused images on this machine (dangling/unused only)..."
 if command -v k3s >/dev/null 2>&1; then
-  sudo k3s crictl rmi --prune 2>/dev/null || echo "(skipped k3s prune — need sudo or crictl)"
+  sudo k3s crictl rmi --prune 2>/dev/null || echo "(skipped k3s prune - need sudo or crictl)"
 elif command -v docker >/dev/null 2>&1; then
   container_image_prune
 fi

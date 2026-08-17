@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Control center for Nextcloud + Office (Kubernetes) — install, update, backup, status, uninstall.
+# Control center for Nextcloud + Office (Kubernetes) - install, update, backup, status, uninstall.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
@@ -13,7 +13,7 @@ shift || true
 
 usage() {
   cat <<EOF
-${UI_BOLD}${TITLE} · manage.sh${UI_RESET} (namespace: ${NS})
+${UI_BOLD}${TITLE} - manage.sh${UI_RESET} (namespace: ${NS})
 
 Usage:
   ./manage.sh                 Interactive menu

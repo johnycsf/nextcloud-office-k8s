@@ -5,9 +5,9 @@
 # Archives (under DEST/exports/ by default):
 #   --archive tar.gz|tar.xz|zip
 #   --archive-password   password-protect
-#       zip  → zip -e (traditional ZipCrypto; casual/offsite, not bank-grade)
-#       tar.* → compress then age -p (strong passphrase AEAD)
-#   --encrypt            advanced: age recipient/passphrase → *.tar.age
+#       zip  -> zip -e (traditional ZipCrypto; casual/offsite, not bank-grade)
+#       tar.* -> compress then age -p (strong passphrase AEAD)
+#   --encrypt            advanced: age recipient/passphrase -> *.tar.age
 #                        (default dir: DEST/encrypted/)
 #
 # Restore accepts snapshot dirs, *.tar.gz, *.tar.xz, *.zip,
@@ -220,7 +220,7 @@ export_snapshot_archive() {
         partial="${export_root}/${base}.tar.gz.age.partial"
         out="${export_root}/${base}.tar.gz.age"
         rm -f "$partial"
-        echo "    Password-protecting with age passphrase → $(basename "$out")"
+        echo "    Password-protecting with age passphrase -> $(basename "$out")"
         tar -C "$snap" -cf - . | gzip -c | age -p >"$partial"
         mv -f "$partial" "$out"
         _record_export_meta "$snap" "tar.gz+age-passphrase" "$out"
@@ -240,7 +240,7 @@ export_snapshot_archive() {
         partial="${export_root}/${base}.tar.xz.age.partial"
         out="${export_root}/${base}.tar.xz.age"
         rm -f "$partial"
-        echo "    Password-protecting with age passphrase → $(basename "$out")"
+        echo "    Password-protecting with age passphrase -> $(basename "$out")"
         tar -C "$snap" -cf - . | xz -c | age -p >"$partial"
         mv -f "$partial" "$out"
         _record_export_meta "$snap" "tar.xz+age-passphrase" "$out"
@@ -260,7 +260,7 @@ export_snapshot_archive() {
       (
         cd "$snap"
         if _backup_truthy "${ARCHIVE_PASSWORD}"; then
-          echo "    Password-protecting zip (zip -e; ZipCrypto — fine for casual/offsite, not bank-grade)"
+          echo "    Password-protecting zip (zip -e; ZipCrypto - fine for casual/offsite, not bank-grade)"
           zip -erq "$out" .
         else
           zip -rq "$out" .
@@ -286,7 +286,7 @@ export_snapshot_archive() {
 }
 
 export_snapshot_encrypted() {
-  # Advanced: streamed tar | age → *.tar.age (recipient key or --passphrase)
+  # Advanced: streamed tar | age -> *.tar.age (recipient key or --passphrase)
   local snap="$1" stack_id="$2" export_root="${3:-}"
   local stamp name partial out
   need_age
@@ -375,7 +375,7 @@ extract_archive_to_dir() {
       ;;
   esac
   [[ -f "${out}/META.txt" ]] || {
-    echo "Archive missing META.txt — not a johnycsf snapshot export?" >&2
+    echo "Archive missing META.txt - not a johnycsf snapshot export?" >&2
     return 1
   }
   printf '%s\n' "$(cd "$out" && pwd)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wire Nextcloud → Collabora Online (LibreOffice) after the Nextcloud admin account exists.
+# Wire Nextcloud -> Collabora Online (LibreOffice) after the Nextcloud admin account exists.
 # Docs:
 #   https://docs.nextcloud.com/server/latest/admin_manual/office/example-docker.html
 #   https://github.com/nextcloud/richdocuments/blob/main/docs/install.md
@@ -61,7 +61,7 @@ kubectl -n "$NS" rollout status deployment/collabora --timeout=300s
 
 echo "Waiting until Nextcloud setup wizard is finished (create your admin user in the browser)..."
 echo "Open: ${NC_URL}"
-echo "(Database is MariaDB — create the admin account only; DB fields are auto-configured.)"
+echo "(Database is MariaDB - create the admin account only; DB fields are auto-configured.)"
 for i in $(seq 1 180); do
   if occ status 2>/dev/null | grep -q 'installed: true'; then
     echo "Nextcloud is installed."
@@ -100,7 +100,7 @@ fi
 
 echo
 echo "Running connectivity checks..."
-"${ROOT}/verify-office.sh" || {
+"${ROOT}/scripts/verify-office.sh" || {
   echo
   echo "configure-office.sh finished, but verify-office.sh reported problems." >&2
   echo "See the messages above before testing in the browser." >&2
@@ -114,6 +114,6 @@ Office editing is configured (Collabora / LibreOffice Online).
 Nextcloud:  ${NC_URL}
 Collabora:  ${COLLABORA_PUBLIC_URL}/hosting/discovery
 
-In Nextcloud, try:  + New → Document / Spreadsheet / Presentation
+In Nextcloud, try:  + New -> Document / Spreadsheet / Presentation
 
 EOF

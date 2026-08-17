@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Host dependency helper — sourced by install.sh in johnycsf homelab app repos.
+# Host dependency helper - sourced by install.sh in johnycsf homelab app repos.
 # Detects the OS/package manager and installs missing binaries (with sudo when needed).
 # shellcheck shell=bash
 
@@ -17,7 +17,7 @@ _ui_setup() {
     UI_RESET=$'[0m'
     UI_BOLD=$'[1m'
     UI_DIM=$'[2m'
-    # Soft pastel palette — standard for johnycsf interactive install / manage UIs
+    # Soft pastel palette - standard for johnycsf interactive install / manage UIs
     if [[ "${COLORTERM:-}" == *truecolor* || "${COLORTERM:-}" == *24bit* || "${TERM:-}" == *-direct ]]; then
       UI_RED=$'[38;2;243;139;168m'     # rose
       UI_GREEN=$'[38;2;166;227;161m'   # green
@@ -52,11 +52,27 @@ _ui_setup() {
 }
 _ui_setup
 
+# Displayed glyphs are built from escapes so this file stays pure ASCII.
+# Literal UTF-8 here has been silently rewritten as cp1252 more than once,
+# which destroys these characters and ships broken output to users.
+UI_SYM_HLINE=$'\u2550'     # BOX DRAWINGS DOUBLE HORIZONTAL
+UI_SYM_STEP=$'\u25b8'      # BLACK RIGHT-POINTING SMALL TRIANGLE
+UI_SYM_INFO=$'\u2139'      # INFORMATION SOURCE
+UI_SYM_OK=$'\u2714'        # HEAVY CHECK MARK
+UI_SYM_WARN=$'\u26a0'      # WARNING SIGN
+UI_SYM_ERR=$'\u2716'       # HEAVY MULTIPLICATION X
+UI_SYM_BULLET=$'\u2022'    # BULLET
+UI_SYM_DOT=$'\u00b7'       # MIDDLE DOT
+UI_SYM_ELLIPSIS=$'\u2026'  # HORIZONTAL ELLIPSIS
+UI_SYM_UP=$'\u2191'        # UPWARDS ARROW
+UI_SYM_DOWN=$'\u2193'      # DOWNWARDS ARROW
+UI_SYM_GE=$'\u2265'        # GREATER-THAN OR EQUAL TO
+
 ui_banner() {
   local title="$1"
   local subtitle="${2:-}"
   local line
-  line="$(printf '═%.0s' {1..56})"
+  line="$(printf "${UI_SYM_HLINE}%.0s" {1..56})"
   echo
   echo "${UI_CYAN}${UI_BOLD}${line}${UI_RESET}"
   echo "${UI_CYAN}${UI_BOLD}  ${title}${UI_RESET}"
@@ -73,16 +89,16 @@ ui_step() {
   local msg="$1"
   UI_STEP_N=$((UI_STEP_N + 1))
   if [[ "${UI_STEP_TOTAL}" -gt 0 ]]; then
-    echo "${UI_BLUE}${UI_BOLD}▸ Step ${UI_STEP_N}/${UI_STEP_TOTAL}${UI_RESET}  ${UI_BOLD}${msg}${UI_RESET}"
+    echo "${UI_BLUE}${UI_BOLD}${UI_SYM_STEP} Step ${UI_STEP_N}/${UI_STEP_TOTAL}${UI_RESET}  ${UI_BOLD}${msg}${UI_RESET}"
   else
-    echo "${UI_BLUE}${UI_BOLD}▸${UI_RESET} ${UI_BOLD}${msg}${UI_RESET}"
+    echo "${UI_BLUE}${UI_BOLD}${UI_SYM_STEP}${UI_RESET} ${UI_BOLD}${msg}${UI_RESET}"
   fi
 }
 
-ui_info() { echo "${UI_CYAN}ℹ${UI_RESET} $*"; }
-ui_ok() { echo "${UI_GREEN}✔${UI_RESET} $*"; }
-ui_warn() { echo "${UI_YELLOW}⚠${UI_RESET} $*" >&2; }
-ui_err() { echo "${UI_RED}✖${UI_RESET} $*" >&2; }
+ui_info() { echo "${UI_CYAN}${UI_SYM_INFO}${UI_RESET} $*"; }
+ui_ok() { echo "${UI_GREEN}${UI_SYM_OK}${UI_RESET} $*"; }
+ui_warn() { echo "${UI_YELLOW}${UI_SYM_WARN}${UI_RESET} $*" >&2; }
+ui_err() { echo "${UI_RED}${UI_SYM_ERR}${UI_RESET} $*" >&2; }
 
 ui_ask() {
   # ui_ask VAR "Prompt" "default"
@@ -149,8 +165,8 @@ ui_run() {
   shift
   local logfile status
   if [[ "${stream}" -eq 1 ]]; then
-    echo "${UI_DIM}…${UI_RESET} ${label}"
-    ui_info "Showing live progress (large images can take several minutes)…"
+    echo "${UI_DIM}${UI_SYM_ELLIPSIS}${UI_RESET} ${label}"
+    ui_info "Showing live progress (large images can take several minutes)${UI_SYM_ELLIPSIS}"
     set +e
     "$@"
     status=$?
@@ -163,7 +179,7 @@ ui_run() {
     return "${status}"
   fi
   logfile="$(mktemp)"
-  echo -n "${UI_DIM}…${UI_RESET} ${label} "
+  echo -n "${UI_DIM}${UI_SYM_ELLIPSIS}${UI_RESET} ${label} "
   set +e
   "$@" >"${logfile}" 2>&1
   status=$?
@@ -174,7 +190,7 @@ ui_run() {
     return 0
   fi
   echo "${UI_RED}failed${UI_RESET}"
-  ui_err "${label} failed — last output:"
+  ui_err "${label} failed - last output:"
   tail -n 40 "${logfile}" >&2 || true
   rm -f "${logfile}"
   return "${status}"
@@ -186,8 +202,8 @@ ui_run() {
 
 ui_choose() {
   # ui_choose VAR "Header" "Option A" "Option B" ...
-  # Terminal: ↑/↓ (or j/k) to move, Enter to select. Cursor is ">".
-  # Digits 1–9 jump/select when they match an option index.
+  # Terminal: Up/Down (or j/k) to move, Enter to select. Cursor is ">".
+  # Digits 1-9 jump/select when they match an option index.
   # Non-TTY: picks the first option.
   local __var="$1" __header="$2"
   shift 2
@@ -208,7 +224,7 @@ ui_choose() {
   _ui_choose_render() {
     local i
     printf '%s%s%s\n' "${UI_BOLD}" "${__header}" "${UI_RESET}"
-    printf '%s  ↑/↓ or j/k · Enter to select%s\n' "${UI_DIM}" "${UI_RESET}"
+    printf "%s  ${UI_SYM_UP}/${UI_SYM_DOWN} or j/k ${UI_SYM_DOT} Enter to select%s\n" "${UI_DIM}" "${UI_RESET}"
     for i in "${!__opts[@]}"; do
       if ((i == __idx)); then
         printf '  %s>%s %s%s%s\n' "${UI_GREEN}" "${UI_RESET}" "${UI_BOLD}" "${__opts[i]}" "${UI_RESET}"
@@ -327,9 +343,62 @@ port_conflict_with_others() {
 }
 
 
+
+# --- Cross-stack host port registry --------------------------------------
+# Default host ports are kept unique across the johnycsf stacks so several can
+# be installed on one host without fighting over a port:
+#   heimdall-docker          HTTP_PORT       8080
+#   vaultwarden-docker       PORT            8081
+#   nextcloud-office-docker  NEXTCLOUD_PORT  8082
+#   nextcloud-office-docker  COLLABORA_PORT  9980
+#   immich-docker            IMMICH_PORT     2283
+_STACK_PORT_ENV_KEYS=(HTTP_PORT PORT IMMICH_PORT NEXTCLOUD_PORT COLLABORA_PORT)
+
+sibling_stack_claiming_port() {
+  # sibling_stack_claiming_port PORT
+  # Echo "<dir> (<KEY>)" when another stack checked out beside this one already
+  # claims PORT in its .env. Catches stacks that are installed but stopped,
+  # which a listening-socket check cannot see.
+  local port="$1" parent d k v
+  [[ -n "${port}" ]] || return 1
+  parent="$(dirname "${ROOT}")"
+  [[ -d "${parent}" ]] || return 1
+  for d in "${parent}"/*/; do
+    d="${d%/}"
+    [[ "${d}" != "${ROOT}" ]] || continue
+    [[ -f "${d}/manage.sh" && -f "${d}/.env" ]] || continue
+    for k in "${_STACK_PORT_ENV_KEYS[@]}"; do
+      v="$(env_file_get "${k}" "" "${d}/.env")"
+      if [[ -n "${v}" && "${v}" == "${port}" ]]; then
+        printf '%s (%s)\n' "$(basename "${d}")" "${k}"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+next_free_host_port() {
+  # next_free_host_port START - first port that is neither listening nor claimed
+  # by a sibling stack. Uses the cheap socket check (not compose ps) so the scan
+  # stays fast.
+  local p="$1" limit
+  [[ "${p}" =~ ^[0-9]+$ ]] || return 1
+  limit=$(( p + 200 ))
+  while (( p <= limit && p <= 65535 )); do
+    if ! host_tcp_port_in_use "${p}" && ! sibling_stack_claiming_port "${p}" >/dev/null; then
+      printf '%s\n' "${p}"
+      return 0
+    fi
+    p=$(( p + 1 ))
+  done
+  printf '%s\n' "$1"
+  return 1
+}
+
 ensure_host_firewall_tcp_port() {
   # Open TCP port in firewalld when active. Rootless Podman does not auto-open
-  # host firewall ports the way Docker often does — without this, the app can be
+  # host firewall ports the way Docker often does - without this, the app can be
   # healthy on localhost while LAN browsers get "no route to host".
   local port="$1"
   [[ -n "${port}" ]] || return 0
@@ -346,7 +415,7 @@ ensure_host_firewall_tcp_port() {
     ui_ok "firewalld: ${port}/tcp open"
     return 0
   fi
-  ui_warn "Could not open firewalld ${port}/tcp — LAN access may fail."
+  ui_warn "Could not open firewalld ${port}/tcp - LAN access may fail."
   ui_info "Run: sudo firewall-cmd --permanent --add-port=${port}/tcp && sudo firewall-cmd --reload"
 }
 
@@ -402,7 +471,9 @@ adjust_port_for_rootless_podman() {
   fi
   suggested="$(suggest_unprivileged_port "${port}")"
   ui_warn "Rootless Podman cannot publish host port ${port} (need >= $(unprivileged_port_start))."
-  ui_info "Using ${suggested} for ${label}. Pick another high port if that is taken."
+  # stdout is this function's return channel, so the notice must go to stderr or
+  # the caller captures the message text as the port number.
+  ui_info "Using ${suggested} for ${label}. Pick another high port if that is taken." >&2
   printf '%s\n' "${suggested}"
 }
 
@@ -410,12 +481,17 @@ configure_host_port() {
   # configure_host_port ENV_KEY "Human label" default
   # Writes KEY=port into .env and exports KEY for the current shell.
   local key="$1" label="$2" default="$3"
-  local current chosen keep min_port=1 start
+  local current chosen keep min_port=1 start sibling
 
   load_container_engine
   current="$(env_file_get "${key}" "${default}")"
   [[ -n "${current}" ]] || current="${default}"
   current="$(adjust_port_for_rootless_podman "${current}" "${label}")"
+  if sibling="$(sibling_stack_claiming_port "${current}")"; then
+    ui_warn "Host port ${current} is already claimed by ${sibling}"
+    current="$(next_free_host_port "${current}")"
+    ui_info "Using ${current} for ${label} instead."
+  fi
   default="${current}"
   if rootless_podman_bind_restricted; then
     start="$(unprivileged_port_start)"
@@ -461,9 +537,14 @@ configure_host_port() {
       ui_ask_int chosen "Pick a host port >= ${min_port} for ${label}" "$(suggest_unprivileged_port "${chosen}")" "${min_port}" 65535
       continue
     fi
+    if sibling="$(sibling_stack_claiming_port "${chosen}")"; then
+      ui_warn "Port ${chosen} is already claimed by ${sibling}"
+      ui_ask_int chosen "Pick a different host port for ${label}" "$(next_free_host_port "${chosen}")" "${min_port}" 65535
+      continue
+    fi
     if port_conflict_with_others "${chosen}"; then
       ui_warn "Port ${chosen} is already in use on this host"
-      ui_ask_int chosen "Pick a different host port for ${label}" "${default}" "${min_port}" 65535
+      ui_ask_int chosen "Pick a different host port for ${label}" "$(next_free_host_port "${chosen}")" "${min_port}" 65535
       continue
     fi
     break
@@ -482,19 +563,19 @@ ui_progress_wait() {
   local label="$1" timeout="$2"
   shift 2
   local i=0 spin='|/-\' frame
-  echo -n "${UI_DIM}…${UI_RESET} ${label} "
+  echo -n "${UI_DIM}${UI_SYM_ELLIPSIS}${UI_RESET} ${label} "
   while (( i < timeout )); do
     if "$@" >/dev/null 2>&1; then
       echo "${UI_GREEN}ready${UI_RESET}"
       return 0
     fi
     frame="${spin:i%4:1}"
-    printf '\r%s %s %s ' "${UI_DIM}…${UI_RESET}" "${label}" "${UI_CYAN}${frame}${UI_RESET}"
+    printf '\r%s %s %s ' "${UI_DIM}${UI_SYM_ELLIPSIS}${UI_RESET}" "${label}" "${UI_CYAN}${frame}${UI_RESET}"
     sleep 1
     i=$((i + 1))
   done
   printf '\r'
-  echo "${UI_YELLOW}timeout${UI_RESET} — continuing anyway"
+  echo "${UI_YELLOW}timeout${UI_RESET} - continuing anyway"
   return 1
 }
 
@@ -580,7 +661,7 @@ _deps_pkg_install() {
       brew install "$@"
       ;;
     *)
-      echo "Unsupported OS/package manager — install manually: $*" >&2
+      echo "Unsupported OS/package manager - install manually: $*" >&2
       return 1
       ;;
   esac
@@ -679,7 +760,7 @@ _deps_ensure_cmd() {
   fi
   # shellcheck disable=SC2086
   if ! _deps_pkg_install ${pkgs}; then
-    # kubectl/helm often missing from default apt — try official binaries
+    # kubectl/helm often missing from default apt - try official binaries
     if [[ "${cmd}" == "kubectl" ]]; then
       _deps_install_kubectl_binary || return 1
     elif [[ "${cmd}" == "helm" ]]; then
@@ -775,7 +856,7 @@ compose_engine() {
   esac
 }
 
-# Default wrapper — Nextcloud overrides this in lib.sh for Redis overlays.
+# Default wrapper - Nextcloud overrides this in lib.sh for Redis overlays.
 compose() {
   compose_engine "$@"
 }
@@ -798,7 +879,7 @@ container_engine_label() {
 
 compose_stack_subtitle() {
   # compose_stack_subtitle "official images + Postgres"
-  printf '%s Compose · %s\n' "$(container_engine_label)" "$1"
+  printf "%s Compose ${UI_SYM_DOT} %s\n" "$(container_engine_label)" "$1"
 }
 
 
@@ -808,7 +889,7 @@ need_container_engine() {
   case "${CONTAINER_ENGINE}" in
     podman)
       if ! command -v podman >/dev/null 2>&1; then
-        echo "Missing: podman (CONTAINER_ENGINE=podman in .env — re-run ./manage.sh install or install Podman)." >&2
+        echo "Missing: podman (CONTAINER_ENGINE=podman in .env - re-run ./manage.sh install or install Podman)." >&2
         return 1
       fi
       _deps_ensure_podman_api >/dev/null 2>&1 || true
@@ -846,7 +927,7 @@ save_host_install_env() {
   local k v
   for k in "${_HOST_INSTALL_ENV_KEYS[@]}"; do
     v="$(env_file_get "${k}" "" 2>/dev/null || true)"
-    # Use if/fi — with set -e, a failing [[ ]] && ... aborts the script.
+    # Use if/fi - with set -e, a failing [[ ]] && ... aborts the script.
     if [[ -n "${v}" ]]; then
       _HOST_INSTALL_ENV_SAVED+=("${k}=${v}")
     fi
@@ -884,7 +965,9 @@ ensure_host_owned_dir() {
     mkdir -p "${d}"
     if [[ -O "${d}" ]] && [[ -w "${d}" ]]; then
       # Fast path: dir owned by us; still fix nested root-owned children if present.
-      if ! find "${d}" -maxdepth 4 \( ! -user "${uid}" -o ! -writable \) 2>/dev/null | head -1 | grep -q .; then
+      # -print -quit rather than `| head -1 | grep`: under pipefail the SIGPIPE
+      # from head reads as "nothing found" and silently skips the chown.
+      if [[ -z "$(find "${d}" -maxdepth 4 \( ! -user "${uid}" -o ! -writable \) -print -quit 2>/dev/null)" ]]; then
         continue
       fi
     fi
@@ -934,7 +1017,7 @@ configure_container_engine() {
   export CONTAINER_ENGINE
   ui_ok "Container engine: ${CONTAINER_ENGINE}"
   if [[ "${CONTAINER_ENGINE}" == "podman" ]]; then
-    ui_info "Podman is typically rootless — prefer host ports ≥1024 unless you configure privileges."
+    ui_info "Podman is typically rootless - prefer host ports ${UI_SYM_GE}1024 unless you configure privileges."
   fi
 }
 
@@ -969,7 +1052,7 @@ _deps_ensure_podman() {
   _deps_detect_os
 
   if ! _deps_have podman; then
-    echo "Podman not found — installing..."
+    echo "Podman not found - installing..."
     case "${DEPS_PKG}" in
       dnf|yum)
         _deps_pkg_install podman podman-compose || _deps_pkg_install podman || true
@@ -1030,7 +1113,7 @@ _deps_ensure_podman() {
   if _deps_have podman-compose; then
     echo "Using podman-compose for Compose under Podman."
   elif podman compose version >/dev/null 2>&1; then
-    echo "podman-compose not installed — falling back to podman compose (may wrap docker-compose plugin; warnings silenced)."
+    echo "podman-compose not installed - falling back to podman compose (may wrap docker-compose plugin; warnings silenced)."
   fi
 }
 
@@ -1040,7 +1123,7 @@ _deps_docker_usable() {
 }
 
 _deps_wrap_docker_sudo() {
-  # Current shell only — lets install continue without re-login after usermod.
+  # Current shell only - lets install continue without re-login after usermod.
   docker() { command sudo docker "$@"; }
   export -f docker
 }
@@ -1049,10 +1132,10 @@ _deps_ensure_docker() {
   _deps_detect_os
 
   if ! _deps_have docker; then
-    echo "Docker not found — installing..."
+    echo "Docker not found - installing..."
     case "${DEPS_PKG}" in
       apt)
-        # Prefer distro packages (simple). Fall back to Docker’s convenience script.
+        # Prefer distro packages (simple). Fall back to Docker's convenience script.
         if ! _deps_pkg_install docker.io docker-compose-v2; then
           _deps_pkg_install docker.io docker-compose-plugin || true
         fi
@@ -1123,7 +1206,7 @@ _deps_ensure_docker() {
   fi
 
   if ! docker compose version >/dev/null 2>&1; then
-    echo "Docker Compose plugin missing — installing..."
+    echo "Docker Compose plugin missing - installing..."
     case "${DEPS_PKG}" in
       apt) _deps_pkg_install docker-compose-v2 || _deps_pkg_install docker-compose-plugin || true ;;
       dnf|yum) _deps_pkg_install docker-compose || true ;;
@@ -1146,7 +1229,7 @@ _deps_ensure_container_builder() {
     fi
     return 0
   fi
-  echo "Neither docker nor podman found — installing Docker for image builds..."
+  echo "Neither docker nor podman found - installing Docker for image builds..."
   _deps_ensure_docker
 }
 
@@ -1186,7 +1269,7 @@ ensure_longhorn_storage() {
     return 0
   fi
   _deps_ensure_cmd helm || return 1
-  echo "Longhorn StorageClass not found — installing Longhorn (one-time cluster setup)..."
+  echo "Longhorn StorageClass not found - installing Longhorn (one-time cluster setup)..."
   helm repo add longhorn https://charts.longhorn.io >/dev/null 2>&1 || true
   helm repo update
   helm upgrade --install longhorn longhorn/longhorn \
@@ -1246,7 +1329,7 @@ choose_storage_class() {
 
   if [[ ! -t 0 ]]; then
     sc="longhorn"
-    echo "No TTY and STORAGE_CLASS unset — defaulting to Longhorn."
+    echo "No TTY and STORAGE_CLASS unset - defaulting to Longhorn."
     ensure_storage_class_ready "${sc}" || return 1
     CHOSEN_STORAGE_CLASS="${sc}"
     save_storage_class "${sc}"
@@ -1257,13 +1340,13 @@ choose_storage_class() {
   ui_info "Which Kubernetes storage should PersistentVolumeClaims use?"
   echo "  (You can also set STORAGE_CLASS=name for a non-interactive install.)"
   echo
-  echo "  1) Longhorn          — replicated block storage (recommended; can auto-install)"
+  echo "  1) Longhorn          - replicated block storage (recommended; can auto-install)"
   if [[ -n "${default_sc}" ]]; then
-    echo "  2) Cluster default   — currently: ${default_sc}"
+    echo "  2) Cluster default   - currently: ${default_sc}"
   else
-    echo "  2) Cluster default   — (no default StorageClass annotated on this cluster)"
+    echo "  2) Cluster default   - (no default StorageClass annotated on this cluster)"
   fi
-  echo "  3) local-path        — typical for k3s single-node"
+  echo "  3) local-path        - typical for k3s single-node"
   echo "  4) Pick from classes already installed on this cluster"
   echo "  5) Type a custom StorageClass name"
   echo
@@ -1292,7 +1375,7 @@ choose_storage_class() {
       ;;
     2)
       if [[ -z "${default_sc}" ]]; then
-        echo "No default StorageClass — pick another option or install a provisioner." >&2
+        echo "No default StorageClass - pick another option or install a provisioner." >&2
         return 1
       fi
       sc="${default_sc}"
@@ -1354,7 +1437,7 @@ require_storage_class() {
   elif sc="$(load_storage_class)"; then
     echo "Using saved StorageClass: ${sc}"
   else
-    echo "No saved storage choice (.storage-class) — asking now..."
+    echo "No saved storage choice (.storage-class) - asking now..."
     choose_storage_class || return 1
     sc="${CHOSEN_STORAGE_CLASS}"
   fi
@@ -1410,10 +1493,10 @@ k8s_replica_suggestion() {
   # suggested_count|reason
   case "$1" in
     heimdall)
-      echo "1|Heimdall uses a local SQLite DB on a single PVC (RWO) — 1 replica is safest."
+      echo "1|Heimdall uses a local SQLite DB on a single PVC (RWO) - 1 replica is safest."
       ;;
     vaultwarden)
-      echo "1|Vaultwarden uses SQLite on a single PVC (RWO) — 1 replica is safest."
+      echo "1|Vaultwarden uses SQLite on a single PVC (RWO) - 1 replica is safest."
       ;;
     nextcloud)
       echo "1|Nextcloud files PVC is typically RWO; start with 1. Only raise replicas if you know your storage supports multi-attach."
@@ -1489,7 +1572,7 @@ apply_saved_replicas() {
   [[ -n "${n}" ]] || n="$(load_replicas || true)"
   [[ -n "${n}" ]] || n=1
   if ! kubectl -n "${ns}" get deploy "${deploy}" >/dev/null 2>&1; then
-    ui_warn "Deployment ${ns}/${deploy} not found yet — skip scale"
+    ui_warn "Deployment ${ns}/${deploy} not found yet - skip scale"
     return 0
   fi
   ui_run "Scaling ${ns}/${deploy} to ${n} replica(s)" \
@@ -1500,9 +1583,9 @@ apply_saved_replicas() {
 
 # ensure_host_deps <profile> [extra commands...]
 # Profiles:
-#   docker       — Docker Engine + Compose + common tools
-#   k8s          — kubectl + helm + common tools
-#   heimdall-k8s — k8s + docker|podman for local image build
+#   docker       - Docker Engine + Compose + common tools
+#   k8s          - kubectl + helm + common tools
+#   heimdall-k8s - k8s + docker|podman for local image build
 ensure_host_deps() {
   local profile="${1:-}"
   shift || true
@@ -1572,21 +1655,21 @@ ensure_host_deps() {
 print_homelab_features() {
   cat <<EOF
 ${UI_BOLD}What makes this stack different${UI_RESET}
-  ${UI_GREEN}•${UI_RESET} Interactive install with colors, steps, and progress
-  ${UI_GREEN}•${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/…)
-  ${UI_GREEN}•${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
-  ${UI_GREEN}•${UI_RESET} Docker or Podman at install (CONTAINER_ENGINE in .env) + host port checks
-  ${UI_GREEN}•${UI_RESET} Safe updates with automatic pre-update backups
-  ${UI_GREEN}•${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh)
-  ${UI_GREEN}•${UI_RESET} Official upstream images only (no random third-party app images)
-  ${UI_GREEN}•${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Interactive install with colors, steps, and progress
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Detects your OS and installs missing host tools (Docker/kubectl/helm/${UI_SYM_ELLIPSIS})
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Kubernetes: choose StorageClass + replica count (re-run to change)
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Docker or Podman at install (CONTAINER_ENGINE in .env) + host port checks
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Safe updates with automatic pre-update backups
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Incremental hardlink snapshots + restore (./manage.sh)
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Official upstream images only (no random third-party app images)
+  ${UI_GREEN}${UI_SYM_BULLET}${UI_RESET} Control center: ${UI_BOLD}./manage.sh${UI_RESET} (install / update / backup / status / uninstall)
 EOF
 }
 
 doctor_docker() {
   local title="${1:-App}"
   load_container_engine
-  ui_banner "${title}" "Doctor · $(container_engine_label) stack health"
+  ui_banner "${title}" "Doctor ${UI_SYM_DOT} $(container_engine_label) stack health"
   if [[ ! -f "${ROOT}/docker-compose.yml" && ! -f "${ROOT}/compose.yaml" ]]; then
     ui_err "No docker-compose.yml / compose.yaml in ${ROOT}"
     return 1
@@ -1599,7 +1682,7 @@ doctor_docker() {
     _pv="$(env_file_get "${_pk}" "" "${ROOT}/.env" 2>/dev/null || true)"
     if [[ -n "${_pv}" ]]; then
       if port_conflict_with_others "${_pv}" 2>/dev/null; then
-        ui_warn "${_pk}=${_pv} — in use by another process"
+        ui_warn "${_pk}=${_pv} - in use by another process"
       else
         ui_ok "${_pk}=${_pv}"
       fi
@@ -1620,7 +1703,7 @@ doctor_docker() {
     df -h "${ROOT}/data" 2>/dev/null | tail -1 || true
     ui_ok "data/ present"
   else
-    ui_warn "No data/ directory yet — run ./manage.sh first"
+    ui_warn "No data/ directory yet - run ./manage.sh first"
   fi
 
   echo
@@ -1631,7 +1714,7 @@ doctor_docker() {
     ui_ok "Local snapshots: ${n}"
     ls -1dt "${ROOT}/backups/snapshots"/* 2>/dev/null | head -3 | sed 's/^/  /' || true
   else
-    ui_info "No local backups/ yet — use ./manage.sh backup --dest /mnt/backup (creates /mnt/backup/<stack>/)"
+    ui_info "No local backups/ yet - use ./manage.sh backup --dest /mnt/backup (creates /mnt/backup/<stack>/)"
   fi
 
   if [[ -f "${ROOT}/.env" ]]; then
@@ -1645,7 +1728,7 @@ doctor_docker() {
 
 doctor_k8s() {
   local title="$1" ns="$2"
-  ui_banner "${title}" "Doctor · Kubernetes health (ns=${ns})"
+  ui_banner "${title}" "Doctor ${UI_SYM_DOT} Kubernetes health (ns=${ns})"
   if ! command -v kubectl >/dev/null 2>&1; then
     ui_err "kubectl not found"
     return 1
@@ -1661,7 +1744,7 @@ doctor_k8s() {
     kubectl -n "${ns}" get deploy,sts,svc,pvc 2>/dev/null || kubectl -n "${ns}" get all,pvc 2>/dev/null || true
     ui_ok "Namespace exists"
   else
-    ui_warn "Namespace ${ns} not found — run ./manage.sh"
+    ui_warn "Namespace ${ns} not found - run ./manage.sh"
   fi
 
   echo
@@ -1701,7 +1784,7 @@ confirm_destructive() {
 uninstall_docker_stack() {
   local title="$1"
   load_container_engine
-  ui_banner "${title}" "Uninstall · $(container_engine_label)"
+  ui_banner "${title}" "Uninstall ${UI_SYM_DOT} $(container_engine_label)"
   ui_warn "This stops containers. You choose whether to delete ./data"
   confirm_destructive "uninstall" || { ui_info "Cancelled."; return 1; }
 
@@ -1723,7 +1806,7 @@ uninstall_docker_stack() {
 
 uninstall_k8s_stack() {
   local title="$1" ns="$2"
-  ui_banner "${title}" "Uninstall · Kubernetes (ns=${ns})"
+  ui_banner "${title}" "Uninstall ${UI_SYM_DOT} Kubernetes (ns=${ns})"
   ui_warn "This deletes the namespace workloads. PVCs/data may remain until you delete them."
   confirm_destructive "uninstall" || { ui_info "Cancelled."; return 1; }
 
@@ -1794,7 +1877,7 @@ resolve_stack_backup_from() {
 manage_menu_docker() {
   local title="$1" choice dest from
   load_container_engine
-  ui_banner "${title}" "Control center · $(container_engine_label)"
+  ui_banner "${title}" "Control center ${UI_SYM_DOT} $(container_engine_label)"
   print_homelab_features
   echo
   ui_choose choice "What do you want to do?" \
@@ -1825,7 +1908,7 @@ manage_menu_docker() {
 
 manage_menu_k8s() {
   local title="$1" ns="$2" choice dest from
-  ui_banner "${title}" "Control center · Kubernetes"
+  ui_banner "${title}" "Control center ${UI_SYM_DOT} Kubernetes"
   print_homelab_features
   echo
   ui_choose choice "What do you want to do?" \

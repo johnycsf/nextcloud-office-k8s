@@ -16,7 +16,7 @@ if [[ "${SHOW_HELP}" -eq 1 ]]; then
   exit 0
 fi
 
-ui_banner "Nextcloud + Office" "Kubernetes · MariaDB + Collabora · storage + replicas"
+ui_banner "Nextcloud + Office" "Kubernetes - MariaDB + Collabora - storage + replicas"
 ui_steps_init 6
 
 ui_step "Checking host dependencies"
@@ -67,5 +67,5 @@ ui_info "${REDIS_NOTE}"
 ui_info "Open: ${UI_BOLD}http://${NC_IP}/${UI_RESET}"
 ui_info "Re-run ./manage.sh anytime to change replicas or storage preference"
 echo
-ui_info "Finishing Office (Collabora) setup…"
+ui_info "Finishing Office (Collabora) setup..."
 "${ROOT}/scripts/configure-office.sh"
