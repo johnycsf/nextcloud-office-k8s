@@ -396,14 +396,41 @@ next_free_host_port() {
   return 1
 }
 
-ensure_host_firewall_tcp_port() {
-  # Open TCP port in firewalld when active. Rootless Podman does not auto-open
-  # host firewall ports the way Docker often does - without this, the app can be
-  # healthy on localhost while LAN browsers get "no route to host".
+_ufw_status_text() {
+  # ufw status needs root on most systems. Try unprivileged first, then a
+  # non-interactive sudo, so detection never blocks on a password prompt.
+  local out
+  out="$(ufw status 2>/dev/null || true)"
+  if [[ -z "${out}" ]] && command -v sudo >/dev/null 2>&1; then
+    out="$(sudo -n ufw status 2>/dev/null || true)"
+  fi
+  printf '%s\n' "${out}"
+}
+
+host_firewall_backend() {
+  # Echo the active host firewall: firewalld | ufw | unknown | none
+  # "unknown" means a firewall is installed but its state could not be read.
+  local state
+  if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    printf 'firewalld\n'
+    return 0
+  fi
+  if command -v ufw >/dev/null 2>&1; then
+    state="$(_ufw_status_text)"
+    if [[ "${state}" == *"Status: active"* ]]; then
+      printf 'ufw\n'
+      return 0
+    fi
+    if [[ -z "${state}" ]]; then
+      printf 'unknown\n'
+      return 0
+    fi
+  fi
+  printf 'none\n'
+}
+
+_firewall_open_firewalld() {
   local port="$1"
-  [[ -n "${port}" ]] || return 0
-  command -v firewall-cmd >/dev/null 2>&1 || return 0
-  firewall-cmd --state >/dev/null 2>&1 || return 0
   if firewall-cmd --quiet --query-port="${port}/tcp" 2>/dev/null; then
     ui_ok "firewalld already allows ${port}/tcp"
     return 0
@@ -417,6 +444,42 @@ ensure_host_firewall_tcp_port() {
   fi
   ui_warn "Could not open firewalld ${port}/tcp - LAN access may fail."
   ui_info "Run: sudo firewall-cmd --permanent --add-port=${port}/tcp && sudo firewall-cmd --reload"
+}
+
+_firewall_open_ufw() {
+  local port="$1" rules
+  rules="$(_ufw_status_text)"
+  # Anchored match: a plain substring test would see 80/tcp inside 8080/tcp.
+  if grep -qE "(^|[[:space:]])${port}/tcp([[:space:]]|\$)" <<<"${rules}"; then
+    ui_ok "ufw already allows ${port}/tcp"
+    return 0
+  fi
+  echo "==> Opening ufw port ${port}/tcp for LAN access..."
+  if command -v sudo >/dev/null 2>&1 && sudo ufw allow "${port}/tcp" >/dev/null 2>&1; then
+    ui_ok "ufw: ${port}/tcp open"
+    return 0
+  fi
+  ui_warn "Could not open ufw ${port}/tcp - LAN access may fail."
+  ui_info "Run: sudo ufw allow ${port}/tcp"
+}
+
+ensure_host_firewall_tcp_port() {
+  # Open the TCP port on whichever host firewall is active. Rootless Podman does
+  # not auto-open host firewall ports the way Docker often does - without this
+  # the app is healthy on localhost while LAN browsers get "no route to host",
+  # which reads as a failed install.
+  local port="$1"
+  [[ -n "${port}" ]] || return 0
+  case "$(host_firewall_backend)" in
+    firewalld) _firewall_open_firewalld "${port}" ;;
+    ufw) _firewall_open_ufw "${port}" ;;
+    unknown)
+      ui_warn "ufw is installed but its status could not be read without a password."
+      ui_info "If ${port} is unreachable from other machines: sudo ufw allow ${port}/tcp"
+      ;;
+    *) : ;;
+  esac
+  return 0
 }
 
 
