@@ -58,7 +58,7 @@ spec:
     spec:
       containers:
         - name: mariadb
-          image: mariadb:lts
+          image: docker.io/library/mariadb:lts
           imagePullPolicy: IfNotPresent
           args:
             - --transaction-isolation=READ-COMMITTED
@@ -154,7 +154,7 @@ spec:
       containers:
         - name: nextcloud
           # Official Nextcloud Apache image + MariaDB via MYSQL_* auto-config
-          image: nextcloud:latest
+          image: docker.io/library/nextcloud:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: TZ
@@ -235,7 +235,7 @@ spec:
     spec:
       containers:
         - name: collabora
-          image: collabora/code:latest
+          image: docker.io/collabora/code:latest
           imagePullPolicy: IfNotPresent
           stdin: true
           tty: true
