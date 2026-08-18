@@ -515,14 +515,23 @@ ensure_host_firewall_tcp_port() {
         ui_info "Attempting: sudo nft add rule inet filter input tcp dport ${port} accept"
         if sudo nft add rule inet filter input tcp dport "${port}" accept >/dev/null 2>&1; then
           ui_ok "Opened ${port}/tcp via nft (temporary)."
-          ui_ask_yn _persist "Make nft rule persistent across reboots (save to /etc/nftables.conf)?" n
-          if [[ "${_persist}" == "y" ]]; then
-            ui_info "Saving nft ruleset to /etc/nftables.conf (may require sudo)."
-            if sudo sh -c 'cp -n /etc/nftables.conf /etc/nftables.conf.bak 2>/dev/null || true' && sudo sh -c 'nft list ruleset > /etc/nftables.conf' >/dev/null 2>&1; then
-              ui_ok "Saved nft ruleset to /etc/nftables.conf"
-            else
-              ui_err "Failed to save nft ruleset. To persist manually run: sudo nft list ruleset > /etc/nftables.conf"
+          # Persist ruleset automatically unless SKIP_PORT_PROMPTS=1 or non-interactive
+          if [[ "${SKIP_PORT_PROMPTS:-}" == "1" || ! -t 0 ]]; then
+            ui_info "Skipping interactive prompt; attempting to persist nft ruleset."
+          else
+            ui_info "Persisting nft ruleset to /etc/nftables.conf (may require sudo)."
+          fi
+          if sudo sh -c 'cp -n /etc/nftables.conf /etc/nftables.conf.bak 2>/dev/null || true' && sudo sh -c 'nft list ruleset > /etc/nftables.conf' >/dev/null 2>&1; then
+            ui_ok "Saved nft ruleset to /etc/nftables.conf"
+            # Try to enable/reload nftables service if present
+            if command -v systemctl >/dev/null 2>&1; then
+              if sudo systemctl enable --now nftables.service >/dev/null 2>&1 || true; then
+                sudo systemctl reload nftables.service >/dev/null 2>&1 || true
+                ui_ok "nftables service enabled/reloaded"
+              fi
             fi
+          else
+            ui_err "Failed to save nft ruleset. To persist manually run: sudo nft list ruleset > /etc/nftables.conf && sudo systemctl enable --now nftables"
           fi
           return 0
         fi
@@ -531,6 +540,23 @@ ensure_host_firewall_tcp_port() {
         ui_info "Attempting: sudo iptables -I INPUT -p tcp --dport ${port} -j ACCEPT"
         if sudo iptables -I INPUT -p tcp --dport "${port}" -j ACCEPT >/dev/null 2>&1; then
           ui_ok "Opened ${port}/tcp via iptables (temporary)."
+          # Persist iptables rules automatically unless SKIP_PORT_PROMPTS=1 or non-interactive
+          if [[ "${SKIP_PORT_PROMPTS:-}" == "1" || ! -t 0 ]]; then
+            ui_info "Skipping interactive prompt; attempting to persist iptables rules."
+          else
+            ui_info "Persisting iptables rules to /etc/iptables/rules.v4 (may require sudo)."
+          fi
+          if sudo mkdir -p /etc/iptables 2>/dev/null || true && sudo sh -c 'iptables-save > /etc/iptables/rules.v4' >/dev/null 2>&1; then
+            ui_ok "Saved iptables rules to /etc/iptables/rules.v4"
+            # Try to reload persistence service if present
+            if command -v systemctl >/dev/null 2>&1; then
+              sudo systemctl enable --now netfilter-persistent.service >/dev/null 2>&1 || true
+              sudo systemctl reload netfilter-persistent.service >/dev/null 2>&1 || sudo systemctl restart netfilter-persistent.service >/dev/null 2>&1 || true
+              ui_ok "netfilter-persistent service reloaded (if present)"
+            fi
+          else
+            ui_err "Failed to save iptables rules. To persist manually run: sudo iptables-save > /etc/iptables/rules.v4"
+          fi
           return 0
         fi
       fi
