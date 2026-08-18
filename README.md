@@ -113,16 +113,15 @@ kubectl -n longhorn-system get pod
 git clone https://github.com/johnycsf/nextcloud-office-k8s.git
 cd nextcloud-office-k8s
 chmod +x manage.sh
-./manage.sh          # interactive control center
-# or: ./manage.sh
-# optional Redis: ./manage.sh install --include-redis
+./manage.sh          # interactive control center (asks about Redis during install)
+# or: ./manage.sh install --include-redis   # skip the question, enable Redis
 ```
 
 What the script does:
 
 1. Creates Secret `nextcloud-db` (generated MariaDB passwords) if missing
 2. Applies `deploy.yaml` (MariaDB + Nextcloud + Collabora)
-3. Optionally applies `deploy-redis.yaml` when you pass `--include-redis`
+3. Asks whether to include Redis, then optionally applies `deploy-redis.yaml`
 4. Waits for Deployments (Collabora image is large — be patient)
 5. Waits for you to open Nextcloud and **create the admin account** (DB already configured)
 6. Runs `configure-office.sh` (URLs, apps, hostAliases)
@@ -132,11 +131,7 @@ Then try: **+ New → Document / Spreadsheet / Presentation**.
 
 ### Optional Redis
 
-```bash
-./manage.sh install --include-redis
-```
-
-Deploys official `redis:alpine` and sets `REDIS_HOST=redis` on Nextcloud ([caching docs](https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/caching_configuration.html)). Skip the flag for a smaller stack.
+`./manage.sh install` asks with an arrow-key Yes/No. Choose **Yes** (or pass `--include-redis`) to deploy official `redis:alpine` and set `REDIS_HOST=redis` on Nextcloud ([caching docs](https://docs.nextcloud.com/server/latest/admin_manual/configuration_server/caching_configuration.html)). Skip for a smaller stack.
 
 Fresh install only — do **not** reuse a previous SQLite PVC with this MariaDB setup.
 
