@@ -43,6 +43,7 @@ ui_ok "Namespace/Secret ready"
 ui_step "Applying manifests"
 ui_run "core manifests" apply_manifest "${ROOT}/deploy.yaml"
 ui_run "MariaDB ready" kubectl -n nextcloud rollout status deployment/db --timeout=300s
+ask_redis_preference
 apply_optional_redis
 
 apply_saved_replicas nextcloud
@@ -56,7 +57,7 @@ if [[ -z "${NC_IP}" ]]; then
   NC_IP="$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
 fi
 
-REDIS_NOTE="Redis skipped (re-run with --include-redis to enable)."
+REDIS_NOTE="Redis skipped (re-run ./manage.sh install to enable)."
 if redis_deployed; then
   REDIS_NOTE="Redis is enabled (REDIS_HOST=redis)."
 fi

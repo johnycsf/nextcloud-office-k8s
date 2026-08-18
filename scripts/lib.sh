@@ -110,7 +110,7 @@ parse_install_args() {
       -h|--help) SHOW_HELP=1 ;;
       *)
         echo "Unknown option: ${arg}" >&2
-        echo "Usage: ./manage.sh [--include-redis]" >&2
+        echo "Usage: ./manage.sh install [--include-redis]" >&2
         exit 1
         ;;
     esac
@@ -119,13 +119,15 @@ parse_install_args() {
 
 print_install_help() {
   cat <<'EOF'
-Usage: ./manage.sh [--include-redis]
+Usage: ./manage.sh install [--include-redis]
 
-  --include-redis   Also deploy official redis:alpine and set REDIS_HOST=redis on Nextcloud
-            (caching / transactional file locking). Optional; MariaDB is always used.
+  Interactive install asks whether to include Redis (arrow-key Yes/No).
+  --include-redis   Skip the question and deploy official redis:alpine
+                    (REDIS_HOST=redis on Nextcloud). MariaDB is always used.
 
 Examples:
   ./manage.sh
+  ./manage.sh install
   ./manage.sh install --include-redis
 EOF
 }
@@ -134,13 +136,43 @@ redis_deployed() {
   kubectl -n "$NS" get deploy redis >/dev/null 2>&1
 }
 
+ask_redis_preference() {
+  # Interactive install asks; --include-redis forces on. Non-TTY keeps current
+  # cluster state (no Redis unless already deployed).
+  if [[ "${WITH_REDIS:-0}" -eq 1 ]]; then
+    return 0
+  fi
+  if [[ ! -t 0 ]] || [[ ! -t 1 ]]; then
+    return 0
+  fi
+
+  echo
+  ui_info "Redis is optional. Nextcloud can use it for caching and file locking."
+  local choice
+  if redis_deployed; then
+    ui_choose choice "Redis is already deployed. Keep it?" \
+      "Yes - keep Redis" \
+      "No - leave Redis as-is (does not uninstall)"
+    case "${choice}" in
+      Yes*) WITH_REDIS=1 ;;
+    esac
+    return 0
+  fi
+  ui_choose choice "Include Redis for Nextcloud caching and file locking?" \
+    "Yes - deploy Redis" \
+    "No - skip Redis"
+  case "${choice}" in
+    Yes*) WITH_REDIS=1 ;;
+  esac
+}
+
 apply_optional_redis() {
   if [[ "${WITH_REDIS:-0}" -ne 1 ]]; then
     if redis_deployed; then
       echo "Redis Deployment already present - leaving it enabled."
       kubectl -n "$NS" set env deployment/nextcloud REDIS_HOST=redis >/dev/null
     else
-      echo "Redis skipped (pass --include-redis to enable)."
+      echo "Redis skipped."
     fi
     return 0
   fi

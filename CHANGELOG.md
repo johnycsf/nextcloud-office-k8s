@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Interactive install asks whether to include optional Redis (Yes/No). `--include-redis` still skips the question and enables it.
+
 - Manage menu includes **Restore** (backup root, snapshot, or archive).
 
 - Single entrypoint: `./manage.sh` (install/update/backup helpers moved under `scripts/`).
