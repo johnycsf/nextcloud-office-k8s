@@ -1,0 +1,39 @@
+name: Check image registries
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-images:
+    name: Check image registries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan YAML files for image entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad=0
+          files=$(git ls-files '*.yml' '*.yaml' || true)
+          for f in $files; do
+            while IFS= read -r match; do
+              lineno=$(echo "$match" | cut -d: -f1)
+              line=$(echo "$match" | cut -d: -f2-)
+              value=$(echo "$line" | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/["'"'']//g' | sed 's/^ *//; s/ *$//')
+              if [[ -z "$value" ]]; then
+                continue
+              fi
+              if [[ "$value" == \${IMAGE_REGISTRY* ]] || [[ "$value" == docker.io* ]]; then
+                continue
+              fi
+              echo "::error file=$f,line=$lineno::Disallowed image registry: $value"
+              bad=1
+            done < <(grep -n -E '^[[:space:]]*image[[:space:]]*:' "$f" || true)
+          done
+          if [[ $bad -eq 1 ]]; then
+            echo "Found images not using docker.io or \${IMAGE_REGISTRY}."
+            exit 1
+          fi
