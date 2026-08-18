@@ -22,7 +22,7 @@ jobs:
             while IFS= read -r match; do
               lineno=$(echo "$match" | cut -d: -f1)
               line=$(echo "$match" | cut -d: -f2-)
-              value=$(echo "$line" | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/["'"'']//g' | sed 's/^ *//; s/ *$//')
+              value=$(echo "$line" | sed -E "s/^[[:space:]]*image:[[:space:]]*//; s/[\\\"']//g" | sed 's/^ *//; s/ *$//')
               if [[ -z "$value" ]]; then
                 continue
               fi
