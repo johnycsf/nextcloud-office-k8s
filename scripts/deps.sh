@@ -13,43 +13,82 @@
 
 # --- Pretty terminal UI (colors, steps, prompts) ---
 _ui_setup() {
-  if [[ -t 1 && "${NO_COLOR:-}" != "1" ]]; then
-    UI_RESET=$'[0m'
-    UI_BOLD=$'[1m'
-    UI_DIM=$'[2m'
-    # Soft pastel palette - standard for johnycsf interactive install / manage UIs
-    if [[ "${COLORTERM:-}" == *truecolor* || "${COLORTERM:-}" == *24bit* || "${TERM:-}" == *-direct ]]; then
-      UI_RED=$'[38;2;243;139;168m'     # rose
-      UI_GREEN=$'[38;2;166;227;161m'   # green
-      UI_YELLOW=$'[38;2;249;226;175m'  # yellow
-      UI_BLUE=$'[38;2;137;180;250m'    # blue
-      UI_MAGENTA=$'[38;2;203;166;247m' # mauve
-      UI_CYAN=$'[38;2;137;220;235m'    # sky
-      UI_WHITE=$'[38;2;205;214;244m'   # text
-      UI_PEACH=$'[38;2;250;179;135m'
-      UI_TEAL=$'[38;2;148;226;213m'
-      UI_PINK=$'[38;2;245;194;231m'
+  # Color setup: prefer interactive TTY but allow forcing via FORCE_COLOR=1.
+  # Respect NO_COLOR=1 to explicitly disable colors.
+  if [[ "${NO_COLOR:-}" == "1" ]]; then
+    UI_RESET= UI_BOLD= UI_DIM=
+    UI_RED= UI_GREEN= UI_YELLOW= UI_BLUE= UI_MAGENTA= UI_CYAN= UI_WHITE=
+    UI_PEACH= UI_TEAL= UI_PINK=
+    UI_STEP_N=0
+    UI_STEP_TOTAL=0
+    return 0
+  fi
+
+  local use_color=0
+  if [[ -n "${FORCE_COLOR:-}" ]]; then
+    use_color=1
+  elif [[ -t 1 ]]; then
+    use_color=1
+  fi
+
+  if [[ ${use_color} -eq 1 ]]; then
+    # Determine terminal color capability; prefer tput when present.
+    local colors=0
+    if command -v tput >/dev/null 2>&1; then
+      colors=$(tput colors 2>/dev/null || echo 0)
+    fi
+
+    UI_RESET=$'\e[0m'
+    UI_BOLD=$'\e[1m'
+    UI_DIM=$'\e[2m'
+
+    if [[ "${COLORTERM:-}" == *truecolor* || "${COLORTERM:-}" == *24bit* ]] || (( colors >= 16777216 )); then
+      # Truecolor
+      UI_RED=$'\e[38;2;243;139;168m'
+      UI_GREEN=$'\e[38;2;166;227;161m'
+      UI_YELLOW=$'\e[38;2;249;226;175m'
+      UI_BLUE=$'\e[38;2;137;180;250m'
+      UI_MAGENTA=$'\e[38;2;203;166;247m'
+      UI_CYAN=$'\e[38;2;137;220;235m'
+      UI_WHITE=$'\e[38;2;205;214;244m'
+      UI_PEACH=$'\e[38;2;250;179;135m'
+      UI_TEAL=$'\e[38;2;148;226;213m'
+      UI_PINK=$'\e[38;2;245;194;231m'
+    elif (( colors >= 256 )); then
+      # 256-color approximations
+      UI_RED=$'\e[38;5;211m'
+      UI_GREEN=$'\e[38;5;151m'
+      UI_YELLOW=$'\e[38;5;223m'
+      UI_BLUE=$'\e[38;5;117m'
+      UI_MAGENTA=$'\e[38;5;183m'
+      UI_CYAN=$'\e[38;5;116m'
+      UI_WHITE=$'\e[38;5;189m'
+      UI_PEACH=$'\e[38;5;216m'
+      UI_TEAL=$'\e[38;5;152m'
+      UI_PINK=$'\e[38;5;218m'
     else
-      # 256-color pastel approximations
-      UI_RED=$'[38;5;211m'
-      UI_GREEN=$'[38;5;151m'
-      UI_YELLOW=$'[38;5;223m'
-      UI_BLUE=$'[38;5;117m'
-      UI_MAGENTA=$'[38;5;183m'
-      UI_CYAN=$'[38;5;116m'
-      UI_WHITE=$'[38;5;189m'
-      UI_PEACH=$'[38;5;216m'
-      UI_TEAL=$'[38;5;152m'
-      UI_PINK=$'[38;5;218m'
+      # Fallback to basic 8-color ANSI
+      UI_RED=$'\e[31m'
+      UI_GREEN=$'\e[32m'
+      UI_YELLOW=$'\e[33m'
+      UI_BLUE=$'\e[34m'
+      UI_MAGENTA=$'\e[35m'
+      UI_CYAN=$'\e[36m'
+      UI_WHITE=$'\e[37m'
+      UI_PEACH=$UI_YELLOW
+      UI_TEAL=$UI_CYAN
+      UI_PINK=$UI_MAGENTA
     fi
   else
     UI_RESET= UI_BOLD= UI_DIM=
     UI_RED= UI_GREEN= UI_YELLOW= UI_BLUE= UI_MAGENTA= UI_CYAN= UI_WHITE=
     UI_PEACH= UI_TEAL= UI_PINK=
   fi
+
   UI_STEP_N=0
   UI_STEP_TOTAL=0
 }
+
 _ui_setup
 
 # Displayed glyphs are built from escapes so this file stays pure ASCII.
