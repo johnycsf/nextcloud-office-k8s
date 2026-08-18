@@ -470,14 +470,39 @@ ensure_host_firewall_tcp_port() {
   # which reads as a failed install.
   local port="$1"
   [[ -n "${port}" ]] || return 0
-  case "$(host_firewall_backend)" in
-    firewalld) _firewall_open_firewalld "${port}" ;;
-    ufw) _firewall_open_ufw "${port}" ;;
+  local backend
+  backend="$(host_firewall_backend)"
+  case "${backend}" in
+    firewalld)
+      _firewall_open_firewalld "${port}"
+      ;;
+    ufw)
+      _firewall_open_ufw "${port}"
+      ;;
     unknown)
       ui_warn "ufw is installed but its status could not be read without a password."
       ui_info "If ${port} is unreachable from other machines: sudo ufw allow ${port}/tcp"
       ;;
-    *) : ;;
+    *)
+      # No higher-level firewall detected. Try to open the port directly via nft or iptables.
+      ui_info "No firewalld/ufw detected - attempting to open ${port}/tcp via nft/iptables (may require sudo)."
+      if command -v nft >/dev/null 2>&1; then
+        ui_info "Attempting: sudo nft add rule inet filter input tcp dport ${port} accept"
+        if sudo nft add rule inet filter input tcp dport "${port}" accept >/dev/null 2>&1; then
+          ui_ok "Opened ${port}/tcp via nft (temporary)."
+          return 0
+        fi
+      fi
+      if command -v iptables >/dev/null 2>&1; then
+        ui_info "Attempting: sudo iptables -I INPUT -p tcp --dport ${port} -j ACCEPT"
+        if sudo iptables -I INPUT -p tcp --dport "${port}" -j ACCEPT >/dev/null 2>&1; then
+          ui_ok "Opened ${port}/tcp via iptables (temporary)."
+          return 0
+        fi
+      fi
+      ui_warn "Could not open ${port}/tcp automatically - LAN access may fail."
+      ui_info "Run: sudo firewall-cmd --permanent --add-port=${port}/tcp && sudo firewall-cmd --reload  OR sudo ufw allow ${port}/tcp"
+      ;;
   esac
   return 0
 }
@@ -1859,8 +1884,21 @@ uninstall_docker_stack() {
   ui_ask_yn wipe "Also DELETE ./data (permanent)?" n
   if [[ "${wipe}" == "y" ]]; then
     confirm_destructive "delete-data" || { ui_info "Left data/ in place."; return 0; }
-    rm -rf "${ROOT}/data"
-    ui_ok "Deleted ./data"
+    if rm -rf "${ROOT}/data"; then
+      ui_ok "Deleted ./data"
+    else
+      ui_warn "Failed to delete ./data due to permissions. Trying with sudo..."
+      if command -v sudo >/dev/null 2>&1; then
+        ui_info "You may be asked for your sudo password."
+        if sudo rm -rf "${ROOT}/data"; then
+          ui_ok "Deleted ./data (via sudo)"
+        else
+          ui_err "sudo rm failed; left ./data in place. Fix ownership or remove manually."
+        fi
+      else
+        ui_err "sudo not available. Cannot delete ./data. Run: sudo rm -rf ${ROOT}/data"
+      fi
+    fi
   else
     ui_ok "Left ./data in place"
   fi
