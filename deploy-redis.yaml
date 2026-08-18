@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:alpine
+          image: ${IMAGE_REGISTRY:-docker.io}/library/redis:alpine
           imagePullPolicy: IfNotPresent
           ports:
             - name: redis
