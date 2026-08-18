@@ -1,4 +1,6 @@
 # Nextcloud + Collabora Online (LibreOffice) + MariaDB on Kubernetes
+# To deploy from an alternate registry, substitute IMAGE_REGISTRY and apply:
+#   IMAGE_REGISTRY=registry.example.com envsubst < deploy.yaml | kubectl apply -f -
 # Official Nextcloud image: https://hub.docker.com/_/nextcloud
 # Official MariaDB image:   https://hub.docker.com/_/mariadb
 # DB config guidance:       https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/linux_database_configuration.html
@@ -58,7 +60,7 @@ spec:
     spec:
       containers:
         - name: mariadb
-          image: docker.io/library/mariadb:lts
+          image: ${IMAGE_REGISTRY:-docker.io}/library/mariadb:lts
           imagePullPolicy: IfNotPresent
           args:
             - --transaction-isolation=READ-COMMITTED
@@ -154,7 +156,7 @@ spec:
       containers:
         - name: nextcloud
           # Official Nextcloud Apache image + MariaDB via MYSQL_* auto-config
-          image: docker.io/library/nextcloud:latest
+          image: ${IMAGE_REGISTRY:-docker.io}/library/nextcloud:latest
           imagePullPolicy: IfNotPresent
           env:
             - name: TZ
@@ -235,7 +237,7 @@ spec:
     spec:
       containers:
         - name: collabora
-          image: docker.io/collabora/code:latest
+          image: ${IMAGE_REGISTRY:-docker.io}/collabora/code:latest
           imagePullPolicy: IfNotPresent
           stdin: true
           tty: true
