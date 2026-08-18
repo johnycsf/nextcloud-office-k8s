@@ -1939,6 +1939,18 @@ uninstall_docker_stack() {
 
   if [[ -f "${ROOT}/docker-compose.yml" || -f "${ROOT}/compose.yaml" ]]; then
     ui_run "compose down" compose down || true
+
+  local close_ports
+  ui_ask_yn close_ports "Also CLOSE host firewall ports opened for this stack?" n
+  if [[ "${close_ports}" == "y" ]]; then
+    for pkey in NEXTCLOUD_PORT COLLABORA_PORT HTTP_PORT PORT IMMICH_PORT; do
+      pval="$(env_file_get "${pkey}" "" "${ROOT}/.env" 2>/dev/null || true)"
+      if [[ -n "${pval}" ]]; then
+        remove_host_firewall_tcp_port "${pval}" || true
+      fi
+    done
+  fi
+
   fi
 
   local wipe
@@ -1963,6 +1975,15 @@ uninstall_docker_stack() {
   else
     ui_ok "Left ./data in place"
   fi
+
+  local delimgs
+  ui_ask_yn delimgs "Also DELETE images used by this stack?" n
+  if [[ "${delimgs}" == "y" ]]; then
+    delete_images_used_by_compose || ui_warn "Image deletion step encountered issues"
+  else
+    ui_ok "Left images in local cache"
+  fi
+
   ui_ok "Uninstall finished"
 }
 
