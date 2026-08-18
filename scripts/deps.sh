@@ -411,6 +411,13 @@ host_firewall_backend() {
   # Echo the active host firewall: firewalld | ufw | unknown | none
   # "unknown" means a firewall is installed but its state could not be read.
   local state
+  # Prefer systemctl detection to catch firewalld even when firewall-cmd
+  # binary is missing or not on PATH (service may still be active).
+  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
+    printf 'firewalld\n'
+    return 0
+  fi
+
   if command -v firewall-cmd >/dev/null 2>&1; then
     # Try unprivileged query first
     if firewall-cmd --state >/dev/null 2>&1; then
@@ -422,15 +429,11 @@ host_firewall_backend() {
       printf 'firewalld\n'
       return 0
     fi
-    # Fall back to systemctl if available (service is active but firewall-cmd couldn't be queried)
-    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet firewalld; then
-      printf 'firewalld\n'
-      return 0
-    fi
-    # We know firewalld is installed but couldn't read state without privileges
-    printf 'unknown\n'
+    # firewall-cmd exists but couldn't be queried without privileges
+    printf 'firewalld\n'
     return 0
   fi
+
   if command -v ufw >/dev/null 2>&1; then
     state="$(_ufw_status_text)"
     if [[ "${state}" == *"Status: active"* ]]; then
@@ -443,7 +446,9 @@ host_firewall_backend() {
     fi
   fi
   printf 'none\n'
+
 }
+
 
 _firewall_open_firewalld() {
   local port="$1"
@@ -505,8 +510,8 @@ ensure_host_firewall_tcp_port() {
       _firewall_open_ufw "${port}"
       ;;
     unknown)
-      ui_warn "ufw is installed but its status could not be read without a password."
-      ui_info "If ${port} is unreachable from other machines: sudo ufw allow ${port}/tcp"
+      ui_warn "A host firewall was detected but its status could not be read without a password."
+      ui_info "If ${port} is unreachable from other machines: sudo firewall-cmd --permanent --add-port=${port}/tcp && sudo firewall-cmd --reload  OR sudo ufw allow ${port}/tcp"
       ;;
     *)
       # No higher-level firewall detected. Try to open the port directly via nft or iptables.
