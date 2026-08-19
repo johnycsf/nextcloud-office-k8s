@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Use `mariadb:latest` (floating tag, same as Nextcloud/Collabora) so stack updates pull current MariaDB instead of pinning a minor.
+
 - Interactive install asks whether to include optional Redis (Yes/No). `--include-redis` still skips the question and enables it.
 
 - Manage menu includes **Restore** (backup root, snapshot, or archive).

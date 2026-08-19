@@ -60,7 +60,7 @@ spec:
     spec:
       containers:
         - name: mariadb
-          image: ${IMAGE_REGISTRY:-docker.io}/library/mariadb:lts
+          image: ${IMAGE_REGISTRY:-docker.io}/library/mariadb:latest
           imagePullPolicy: IfNotPresent
           args:
             - --transaction-isolation=READ-COMMITTED
