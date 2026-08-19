@@ -8,7 +8,7 @@
 
 Deploy [Nextcloud](https://nextcloud.com/) on a [Kubernetes](https://kubernetes.io/) homelab with almost no Kubernetes knowledge — including **LibreOffice document editing** via [Collabora Online (CODE)](https://www.collaboraonline.com/code/) and **MariaDB** (not SQLite).
 
-Uses the **official** [`nextcloud`](https://hub.docker.com/_/nextcloud) and [`mariadb:lts`](https://hub.docker.com/_/mariadb) images.
+Uses the **official** [`nextcloud`](https://hub.docker.com/_/nextcloud) and [`mariadb:latest`](https://hub.docker.com/_/mariadb) images.
 
 > **Updating an older clone?** Pulling git is safe. Re-running `./manage.sh` against SQLite or LinuxServer installs is not an in-place migration. Read [BREAKING-CHANGES.md](BREAKING-CHANGES.md).
 
@@ -18,7 +18,7 @@ Docker Compose version (no Kubernetes needed): [nextcloud-office-docker](https:/
 
 Nextcloud treats SQLite as testing/minimal only. [MariaDB and PostgreSQL are recommended](https://docs.nextcloud.com/server/latest/admin_manual/configuration_database/linux_database_configuration.html). This stack mirrors the [official Nextcloud Docker Compose MariaDB pattern](https://github.com/nextcloud/docker#running-this-image-with-docker-compose):
 
-- `mariadb:lts`
+- `mariadb:latest` (floating tag; stack updates pull the current official image)
 - `--transaction-isolation=READ-COMMITTED` (required)
 - `--binlog-format=ROW` and `utf8mb4` / `utf8mb4_bin`
 - Nextcloud `MYSQL_HOST=db` + credentials from Secret `nextcloud-db`
@@ -37,7 +37,7 @@ References:
 
 | Component | Image | Port | Role |
 |-----------|--------|------|------|
-| MariaDB | `mariadb:lts` (official) | `3306` (ClusterIP) | Nextcloud database |
+| MariaDB | `mariadb:latest` (official) | `3306` (ClusterIP) | Nextcloud database |
 | Redis (optional) | `redis:alpine` (official) | `6379` (ClusterIP) | Cache / file locking (`./manage.sh install --include-redis`) |
 | Nextcloud | `nextcloud:latest` (official Docker Hub) | `80` | Files + UI (HTTP) |
 | Collabora Online | `collabora/code:latest` (official Collabora CODE) | `9980` | LibreOffice editing in the browser |
