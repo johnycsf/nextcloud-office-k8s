@@ -1,5 +1,7 @@
 ## Unreleased
 
+- After image updates, run `mariadb-upgrade` so major jumps of `mariadb:latest` do not break `mariadb-dump` / backups.
+
 - Use `mariadb:latest` (floating tag, same as Nextcloud/Collabora) so stack updates pull current MariaDB instead of pinning a minor.
 
 - Interactive install asks whether to include optional Redis (Yes/No). `--include-redis` still skips the question and enables it.

@@ -169,6 +169,20 @@ if redis_deployed; then
   kubectl -n "$NS" rollout status deployment/redis --timeout=180s
 fi
 
+# Floating mariadb:latest can jump majors; catalogs must be upgraded or
+# mariadb-dump fails with "Column count of mysql.proc is wrong".
+echo "==> Running mariadb-upgrade (no-op when catalogs already match)..."
+dbpod="$(kubectl -n "$NS" get pod -l app=db -o jsonpath='{.items[0].metadata.name}')"
+root_pw="$(kubectl -n "$NS" get secret nextcloud-db -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' | base64 -d)"
+if [[ -n "${dbpod}" && -n "${root_pw}" ]]; then
+  kubectl -n "$NS" exec "${dbpod}" -- \
+    env MYSQL_PWD="${root_pw}" mariadb-upgrade -uroot || {
+      echo "Warning: mariadb-upgrade failed - backups may break until it succeeds." >&2
+    }
+else
+  echo "Warning: could not resolve db pod or MYSQL_ROOT_PASSWORD - skipped mariadb-upgrade." >&2
+fi
+
 echo "==> Pruning unused images on this machine (dangling/unused only)..."
 if command -v k3s >/dev/null 2>&1; then
   sudo k3s crictl rmi --prune 2>/dev/null || echo "(skipped k3s prune - need sudo or crictl)"
