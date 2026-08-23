@@ -74,15 +74,17 @@ References:
 
 ## Support this work
 
-If this stack saved you setup time, please consider sponsoring — it funds:
+**If this project helped you — or saved you hours of setup — please consider [sponsoring or donating](https://github.com/sponsors/johnycsf).** These repos stay free and maintained because people like you chip in.
 
-- Keeping install/update/backup scripts working across common Linux distros
-- Testing safe upgrades against **official** upstream images
-- Building more beginner-friendly stacks that share the same `./manage.sh` UX
+Your sponsorship funds:
+
+- Keeping install, update, and backup scripts working across common Linux distros (and macOS where supported)
+- Testing safe upgrades against **official** upstream images before you run them
+- Building more beginner-friendly homelab stacks with the same `./manage.sh` experience
 
 [![Sponsor johnycsf](https://img.shields.io/badge/GitHub%20Sponsors-Donate-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/johnycsf)
 
-👉 **[github.com/sponsors/johnycsf](https://github.com/sponsors/johnycsf)**
+👉 **[github.com/sponsors/johnycsf](https://github.com/sponsors/johnycsf)** — even a small monthly sponsorship helps keep development going.
 
 ## What you need
 
