@@ -20,7 +20,7 @@ ui_banner "Nextcloud + Office" "Kubernetes - MariaDB + Collabora - storage + rep
 ui_steps_init 6
 
 ui_step "Checking host dependencies"
-ensure_host_deps k8s
+ensure_host_deps k8s age zip unzip xz
 
 ui_step "StorageClass"
 configure_k8s_storage
