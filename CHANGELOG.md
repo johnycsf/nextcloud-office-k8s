@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Tighten README into a short landing page with a looping `./manage.sh` control-center GIF (`docs/manage-demo.gif`).
+
 - After image updates, run `mariadb-upgrade` so major jumps of `mariadb:latest` do not break `mariadb-dump` / backups.
 
 - Use `mariadb:latest` (floating tag, same as Nextcloud/Collabora) so stack updates pull current MariaDB instead of pinning a minor.
